@@ -83,7 +83,8 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
       set('Amt', prepared.amt);
       set('BuyerName', prepared.buyerName);
       set('BuyerTel', prepared.buyerTel);
-      set('ReturnURL', `${window.location.origin}/api/nicepay/return`);
+      // 나이스페이 스크립트가 콜백 시 Moid 를 비워 보내는 경우가 있어 ReturnURL 에도 주문번호를 실어 둔다
+      set('ReturnURL', `${window.location.origin}/api/nicepay/return?moid=${encodeURIComponent(prepared.moid)}`);
 
       const isMobile = /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
       if (isMobile) {
@@ -95,8 +96,13 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
       }
 
       // PC: 레이어 팝업. 인증이 끝나면 나이스페이가 이 콜백을 부릅니다 → 서버로 제출해 승인 진행
-      form.action = '/api/nicepay/return';
-      window.nicepaySubmit = () => form.submit();
+      form.action = `/api/nicepay/return?moid=${encodeURIComponent(prepared.moid)}`;
+      window.nicepaySubmit = () => {
+        // 콜백 직전 값이 비워졌을 수 있어 주문번호·금액을 다시 채운다
+        set('Moid', prepared.moid);
+        set('Amt', prepared.amt);
+        form.submit();
+      };
       window.nicepayClose = () => {
         setError('결제가 취소되었습니다.');
         setPending(false);

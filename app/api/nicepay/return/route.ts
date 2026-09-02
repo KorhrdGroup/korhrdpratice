@@ -74,7 +74,8 @@ export async function POST(request: Request) {
   const get = (key: string) => (params.get(key) ?? "").trim();
 
   const authResultCode = get("AuthResultCode");
-  const moid = get("Moid");
+  // 본문 Moid 가 비어 오면 ReturnURL 쿼리에 실어 둔 주문번호를 쓴다
+  const moid = get("Moid") || (new URL(request.url).searchParams.get("moid") ?? "").trim();
 
   let order: Order | null = null;
   if (moid) {
