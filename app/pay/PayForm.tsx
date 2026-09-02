@@ -1,7 +1,7 @@
 'use client';
 
 import Script from 'next/script';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 declare global {
   interface Window {
@@ -34,7 +34,22 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
     return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
   };
 
-  const canPay = name.trim().length >= 2 && phone.replace(/\D/g, '').length >= 10 && agree && sdkReady && !pending;
+  // Script onLoad 는 이미 캐시된 스크립트에서는 안 불릴 수 있어 goPay 존재 여부를 직접 확인합니다.
+  useEffect(() => {
+    if (window.goPay) {
+      setSdkReady(true);
+      return;
+    }
+    const timer = setInterval(() => {
+      if (window.goPay) {
+        setSdkReady(true);
+        clearInterval(timer);
+      }
+    }, 300);
+    return () => clearInterval(timer);
+  }, []);
+
+  const canPay = name.trim().length >= 2 && phone.replace(/\D/g, '').length >= 10 && agree && !pending;
 
   const pay = async () => {
     setError(null);
@@ -140,6 +155,7 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
       </label>
 
       {error ? <p style={{ color: '#f04452', fontSize: 14, marginBottom: 12 }}>{error}</p> : null}
+      {!sdkReady && !error ? <p style={{ color: '#8b95a1', fontSize: 13, marginBottom: 12 }}>결제 모듈을 불러오는 중입니다…</p> : null}
 
       <button
         type="button"
