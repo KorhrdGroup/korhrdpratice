@@ -21,7 +21,7 @@ export default function TermsPage() {
         ))}
 
         <section className={styles.termsSection}>
-          <p className={styles.effectiveDate}>시행일자: 2026년 1월 29일</p>
+          <p className={styles.effectiveDate}>시행일자: 2023년 9월 11일</p>
         </section>
       </div>
     </div>
