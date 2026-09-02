@@ -96,43 +96,43 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    padding: '14px 16px',
-    fontSize: 16,
+    padding: '18px 18px',
+    fontSize: 17,
     border: '1px solid #e5e8eb',
     borderRadius: 12,
     outline: 'none',
     boxSizing: 'border-box',
   };
-  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 14, fontWeight: 600, color: '#4e5968', marginBottom: 8 };
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 15, fontWeight: 600, color: '#4e5968', marginBottom: 10 };
 
   return (
-    <div style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 16, padding: '32px 24px' }}>
+    <div style={{ width: '100%', background: '#fff', borderRadius: 16, padding: '8px 8px 24px' }}>
       <Script
         src="https://web.nicepay.co.kr/v3/webstd/js/nicepay-3.0.js"
         strategy="afterInteractive"
         onLoad={() => setSdkReady(true)}
       />
 
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: '#191f28', marginBottom: 6 }}>{goodsName}</h1>
-      <p style={{ fontSize: 14, color: '#6b7684', marginBottom: 24 }}>
+      <h1 style={{ fontSize: 26, fontWeight: 700, color: '#191f28', marginBottom: 8 }}>{goodsName}</h1>
+      <p style={{ fontSize: 15, color: '#6b7684', marginBottom: 32, lineHeight: 1.6 }}>
         이름과 휴대폰 번호를 입력한 뒤 결제하기를 눌러주세요. 나이스페이 안전결제창이 열립니다.
       </p>
 
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 24 }}>
         <label htmlFor="pay-name" style={labelStyle}>이름</label>
         <input id="pay-name" type="text" placeholder="홍길동" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} autoComplete="name" />
       </div>
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 24 }}>
         <label htmlFor="pay-phone" style={labelStyle}>휴대폰 번호</label>
         <input id="pay-phone" type="tel" inputMode="numeric" placeholder="010-1234-5678" value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))} style={inputStyle} autoComplete="tel" />
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
-        <span style={{ fontSize: 14, color: '#8b95a1' }}>결제금액</span>
-        <span style={{ fontSize: 20, fontWeight: 700, color: '#3182f6' }}>{amount.toLocaleString()}원</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb', borderRadius: 12, padding: '20px 20px', marginBottom: 24 }}>
+        <span style={{ fontSize: 15, color: '#8b95a1' }}>결제금액</span>
+        <span style={{ fontSize: 24, fontWeight: 700, color: '#3182f6' }}>{amount.toLocaleString()}원</span>
       </div>
 
-      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: '#6b7684', marginBottom: 20, cursor: 'pointer' }}>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, color: '#6b7684', marginBottom: 28, cursor: 'pointer', lineHeight: 1.5 }}>
         <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 2 }} />
         <span>
           결제 진행을 위한 <a href="/privacy" target="_blank" style={{ color: '#3182f6' }}>개인정보 수집·이용</a>과 교육원(덧셈원격평생교육원) 제공에 동의합니다.
@@ -146,7 +146,7 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
         onClick={pay}
         disabled={!canPay}
         style={{
-          width: '100%', padding: '16px', fontSize: 16, fontWeight: 700, borderRadius: 12, border: 'none',
+          width: '100%', padding: '20px', fontSize: 18, fontWeight: 700, borderRadius: 12, border: 'none',
           background: canPay ? '#3182f6' : '#d1d6db', color: '#fff', cursor: canPay ? 'pointer' : 'not-allowed',
         }}
       >
