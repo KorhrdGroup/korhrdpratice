@@ -156,7 +156,7 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
       <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, color: '#6b7684', marginBottom: 28, cursor: 'pointer', lineHeight: 1.5 }}>
         <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 2 }} />
         <span>
-          결제 진행을 위한 <a href="/privacy" target="_blank" style={{ color: '#3182f6' }}>개인정보 수집·이용</a>과 교육원(덧셈원격평생교육원) 제공에 동의합니다.
+          결제 진행을 위한 <a href="/privacy" target="_blank" style={{ color: '#3182f6' }}>개인정보 수집·이용</a>과 교육원(한평생원격교육원) 제공에 동의합니다.
         </span>
       </label>
 

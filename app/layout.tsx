@@ -17,25 +17,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "덧셈원격평생교육원",
-  description: "덧셈원격평생교육원",
+  title: "한평생원격교육원 실습비 결제",
+  description: "한평생원격교육원 실습비 결제 페이지입니다. 이름과 휴대폰 번호를 입력하고 나이스페이로 안전하게 결제하세요.",
   openGraph: {
-    title: "덧셈원격평생교육원",
-    description: "덧셈원격평생교육원",
+    title: "한평생원격교육원 실습비 결제",
+    description: "한평생원격교육원 실습비 결제 페이지입니다. 이름과 휴대폰 번호를 입력하고 나이스페이로 안전하게 결제하세요.",
     images: [
       {
         url: "/og-image.png",
         width: 800,
         height: 540,
-        alt: "덧셈원격평생교육원",
+        alt: "한평생원격교육원 실습비 결제",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "덧셈원격평생교육원",
-    description: "덧셈원격평생교육원",
+    title: "한평생원격교육원 실습비 결제",
+    description: "한평생원격교육원 실습비 결제 페이지입니다. 이름과 휴대폰 번호를 입력하고 나이스페이로 안전하게 결제하세요.",
     images: ["/og-image.png"],
   },
 };
