@@ -5,7 +5,7 @@ import { getPayProduct } from '@/lib/pay-product';
 import PayForm from './PayForm';
 
 export const metadata: Metadata = {
-  title: '수강료 결제',
+  title: '실습 결제비 결제',
   robots: { index: false },
 };
 
