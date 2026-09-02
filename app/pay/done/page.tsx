@@ -40,7 +40,7 @@ export default async function Page({
       <div style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 20, boxShadow: '0 6px 24px rgba(15,23,42,0.06)', padding: '48px 28px 32px', textAlign: 'center' }}>
         {ok ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/complete-check.png" alt="" aria-hidden="true" style={{ display: 'block', width: 84, height: 84, objectFit: 'contain', margin: '0 auto 20px' }} />
+          <img src="/complete-check.png" alt="" aria-hidden="true" style={{ display: 'block', width: 128, height: 128, objectFit: 'contain', margin: '0 auto 20px' }} />
         ) : (
           <p style={{ fontSize: 48, margin: '0 0 12px' }}>❌</p>
         )}
@@ -65,12 +65,7 @@ export default async function Page({
         ) : null}
 
         <div style={{ display: 'flex', gap: 8 }}>
-          {ok ? (
-            <Link href="/" style={{ ...btn, background: '#1b2c5c', color: '#fff' }}>홈으로</Link>
-          ) : (
-            <Link href="/" style={{ ...btn, background: '#1b2c5c', color: '#fff' }}>다시 결제하기</Link>
-          )}
-          <a href="tel:1661-7769" style={{ ...btn, background: '#fff', color: '#191f28', border: '1px solid #e5e8eb' }}>고객센터</a>
+          <Link href="/" style={{ ...btn, background: '#3182f6', color: '#fff' }}>{ok ? '홈으로' : '다시 결제하기'}</Link>
         </div>
 
         {ok ? (
