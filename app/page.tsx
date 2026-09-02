@@ -13,7 +13,7 @@ export default function Home() {
       <header className={styles.header}>
         <div style={{ display: "flex", alignItems: "center" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="덧셈원격평생교육원" style={{ height: "auto", width: "220px" }} />
+          <img src="/logo.svg" alt="한평생원격교육원" style={{ height: "auto", width: "240px" }} />
         </div>
       </header>
       <main style={{ flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 32px 56px" }}>

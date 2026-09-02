@@ -9,7 +9,7 @@ export default function Footer() {
       <div className={styles.footerContent}>
         <div className={styles.footerLogo}>
           <span className={styles.logoText}>
-            <img src="/logo.png" alt="덧셈원격평생교육원" />
+            <img src="/logo.svg" alt="한평생원격교육원" />
           </span>
         </div>
 
