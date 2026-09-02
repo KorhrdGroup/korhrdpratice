@@ -25,8 +25,8 @@ export const metadata: Metadata = {
     images: [
       {
         url: "/og-image.png",
-        width: 800,
-        height: 540,
+        width: 1200,
+        height: 630,
         alt: "한평생원격교육원 실습비 결제",
       },
     ],
