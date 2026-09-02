@@ -1,0 +1,2752 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import styles from './admin.module.css';
+import { CAFE_NAMES, KNOWN_CAFE_NAMES, CAFE_CONFIG } from '@/lib/cafe-names';
+import Link from 'next/link';
+import { toast } from 'sonner';
+
+const EDUCATION_OPTIONS = ['고등학교 졸업', '전문대 졸업', '대학교 재학', '대학교 중퇴', '대학교 졸업', '대학원 이상'];
+const ADMIN_COURSE_OPTIONS = ['사회복지사', '아동학사', '평생교육사', '편입/대학원', '건강가정사', '청소년지도사', '보육교사', '심리상담사'];
+
+type ConsultationStatus = '상담대기' | '상담중' | '보류' | '등록대기' | '등록완료';
+
+interface Consultation {
+  id: number;
+  name: string;
+  contact: string;
+  education: string;
+  hope_course: string | null;
+  reason: string;
+  click_source: string | null;
+  memo: string | null;
+  counsel_check: string | null;
+  status: ConsultationStatus;
+  subject_cost: number | null;
+  manager: string | null;
+  residence: string | null;
+  created_at: string;
+}
+
+export default function AdminPage() {
+  const [consultations, setConsultations] = useState<Consultation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showMemoModal, setShowMemoModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showSubjectCostModal, setShowSubjectCostModal] = useState(false);
+  const [showManagerModal, setShowManagerModal] = useState(false);
+  const [showClickSourceModal, setShowClickSourceModal] = useState(false);
+  const [clickSourceSearch, setClickSourceSearch] = useState('');
+  const [showResidenceModal, setShowResidenceModal] = useState(false);
+  const [residenceText, setResidenceText] = useState('');
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [reasonText, setReasonText] = useState('');
+  const [showCounselCheckModal, setShowCounselCheckModal] = useState(false);
+  const [counselCheckText, setCounselCheckText] = useState('');
+  const [counselCheckEtcInput, setCounselCheckEtcInput] = useState('');
+  const [activeTab, setActiveTab] = useState<'consultations' | 'tracking'>('consultations');
+  const [cafes, setCafes] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [cafesLoading, setCafesLoading] = useState(false);
+  const [newCafeName, setNewCafeName] = useState('');
+  const [newCafeId, setNewCafeId] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showAddCafeModal, setShowAddCafeModal] = useState(false);
+  const [showEditCafeModal, setShowEditCafeModal] = useState(false);
+  const [editCafe, setEditCafe] = useState<{ id: string; name: string } | null>(null);
+  const [editCafeName, setEditCafeName] = useState('');
+  const [editCafeId, setEditCafeId] = useState('');
+  const [cafeSearchText, setCafeSearchText] = useState('');
+  const [cafeLookupLoading, setCafeLookupLoading] = useState(false);
+    // 거주지 모달 열기/닫기
+    const openResidenceModal = (consultation: Consultation) => {
+      setSelectedConsultation(consultation);
+      setResidenceText(consultation.residence || '');
+      setShowResidenceModal(true);
+    };
+
+    const closeResidenceModal = () => {
+      setShowResidenceModal(false);
+      setSelectedConsultation(null);
+      setResidenceText('');
+    };
+
+    // 거주지 업데이트
+    const handleUpdateResidence = async () => {
+      if (!selectedConsultation) return;
+      try {
+        const response = await fetch('/api/consultations', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id: selectedConsultation.id, residence: residenceText }),
+        });
+        if (!response.ok) throw new Error('거주지 업데이트 실패');
+        closeResidenceModal();
+        fetchConsultations();
+      } catch (error) {
+        toast.error('거주지 저장에 실패했습니다.');
+      }
+    };
+  const [selectedConsultation, setSelectedConsultation] = useState<Consultation | null>(null);
+  const [memoText, setMemoText] = useState('');
+  const [subjectCostText, setSubjectCostText] = useState('');
+  const [managerText, setManagerText] = useState('');
+  const [managerDirect, setManagerDirect] = useState(false);
+  const [managerModalDirect, setManagerModalDirect] = useState(false);
+  const [editingManagerId, setEditingManagerId] = useState<number | null>(null);
+  const [editingManagerValue, setEditingManagerValue] = useState('');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  // 필터 상태
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ConsultationStatus | 'all'>('all');
+  const [managerFilter, setManagerFilter] = useState('all');
+  const [majorCategoryFilter, setMajorCategoryFilter] = useState('all');
+  const [minorCategoryFilter, setMinorCategoryFilter] = useState('all');
+  const [reasonFilter, setReasonFilter] = useState('all');
+  const [counselCheckFilter, setCounselCheckFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const addEduRef = useRef<HTMLDivElement>(null);
+  const addCourseRef = useRef<HTMLDivElement>(null);
+  // 추가 모달 - 토스 드롭다운 open 상태
+  const [addEduOpen, setAddEduOpen] = useState(false);
+  const [addCourseOpen, setAddCourseOpen] = useState(false);
+  const [addCourseDirectMode, setAddCourseDirectMode] = useState(false);
+  // 추가 모달 - 유입경로 선택
+  const [addSourceMajor, setAddSourceMajor] = useState('');
+  const [addSourceMinor, setAddSourceMinor] = useState('');
+  const [addSourceCustom, setAddSourceCustom] = useState('');
+  // 맘카페 직접입력
+  const [addMamcafeNewId, setAddMamcafeNewId] = useState('');
+  const [addMamcafeNewName, setAddMamcafeNewName] = useState('');
+  const [addMamcafeAdding, setAddMamcafeAdding] = useState(false);
+  // 활동 맘카페 텍스트 입력
+  const [addMamcafeTextInput, setAddMamcafeTextInput] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    contact: '',
+    education: '',
+    hope_course: '',
+    reason: '',
+    click_source: '',
+    subject_cost: '',
+    manager: '',
+    residence: '',
+    memo: '',
+    counsel_check: ''
+  });
+  const router = useRouter();
+
+  // 인증 상태 확인
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  // 드롭다운 외부 클릭 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // filterDropdownRef(드롭다운 패널) 또는 .thFilterBtn 클래스가 아니면 닫기
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(target) &&
+        !target.closest(`.${styles.thFilterBtn}`)
+      ) {
+        setOpenFilterColumn(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 모달 열렸을 때 배경 스크롤 방지
+  useEffect(() => {
+    if (showAddModal || showAddCafeModal || showEditCafeModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [showAddModal, showAddCafeModal, showEditCafeModal]);
+
+  // 추가 모달 드롭다운 외부 클릭 닫기
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (addEduRef.current && !addEduRef.current.contains(e.target as Node)) setAddEduOpen(false);
+      if (addCourseRef.current && !addCourseRef.current.contains(e.target as Node)) setAddCourseOpen(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  // 맘카페 직접입력 → DB 등록 후 선택
+  const handleAddMamcafe = async () => {
+    const rawId = addMamcafeNewId.trim();
+    const name = addMamcafeNewName.trim();
+    if (!rawId || !name) { toast.warning('카페 ID와 이름을 모두 입력해주세요.'); return; }
+    // 네이버 URL에서 ID 추출
+    const match = rawId.match(/(?:https?:\/\/)?(?:m\.)?cafe\.naver\.com\/([a-zA-Z0-9_]+)/);
+    const cafeId = match ? match[1] : rawId;
+    setAddMamcafeAdding(true);
+    try {
+      const res = await fetch('/api/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cafeId, name, type: 'mamcafe' }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.error || '추가 실패');
+        return;
+      }
+      await fetchCafes(); // 카페탭에도 즉시 반영
+      setAddSourceMinor(cafeId);
+      setAddMamcafeNewId('');
+      setAddMamcafeNewName('');
+      applyAddSource('맘카페', cafeId, '');
+    } catch {
+      toast.error('카페 추가에 실패했습니다.');
+    } finally {
+      setAddMamcafeAdding(false);
+    }
+  };
+
+  // 활동 맘카페 텍스트 입력 → click_source 자동 설정
+  const handleMamcafeTextInput = (text: string) => {
+    setAddMamcafeTextInput(text);
+    if (!text.trim()) {
+      setAddSourceMinor('');
+      applyAddSource('맘카페', '', '');
+      return;
+    }
+    // DB 카페 목록에서 이름 매칭
+    const matchedCafe = cafes.find(c => c.name === text.trim() || c.id === text.trim());
+    // CAFE_NAMES에서 이름 매칭 (id → name 역방향)
+    const matchedId = matchedCafe?.id || Object.entries(CAFE_NAMES).find(([, name]) => name === text.trim())?.[0];
+    if (matchedId) {
+      setAddSourceMinor(matchedId);
+      applyAddSource('맘카페', matchedId, '');
+    } else {
+      setAddSourceMinor('확인필요');
+      setFormData(prev => ({ ...prev, click_source: '맘카페_확인필요' }));
+    }
+  };
+
+  // 유입경로 적용
+  const applyAddSource = (major: string, minor: string, custom: string) => {
+    if (!major) { setFormData(prev => ({ ...prev, click_source: '' })); return; }
+    if (minor && minor !== '직접입력') {
+      setFormData(prev => ({ ...prev, click_source: `${major}_${minor}` }));
+    } else if (minor === '직접입력' && custom) {
+      setFormData(prev => ({ ...prev, click_source: `${major}_${custom}` }));
+    } else {
+      setFormData(prev => ({ ...prev, click_source: major }));
+    }
+  };
+
+  const checkAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      fetchConsultations(true);
+    } else {
+      router.push('/admin/login');
+    }
+  };
+
+  // 카페 목록 DB 로드
+  const fetchCafes = async () => {
+    setCafesLoading(true);
+    try {
+      const res = await fetch('/api/channels?type=mamcafe');
+      const data = await res.json();
+      if (Array.isArray(data)) setCafes(data);
+    } catch {}
+    setCafesLoading(false);
+  };
+
+  useEffect(() => {
+    fetchCafes();
+  }, []);
+
+  const handleAddCafe = async (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.preventDefault();
+    const name = newCafeName.trim();
+    const id = newCafeId.trim().replace(/\s/g, '');
+    if (!name) { toast.warning('카페 이름을 입력해주세요.'); return; }
+    if (!id) { toast.warning('카페 ID를 입력해주세요.'); return; }
+    const res = await fetch('/api/channels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name, type: 'mamcafe' }),
+    });
+    if (res.status === 409) { toast.error('이미 존재하는 카페 ID입니다.'); return; }
+    if (!res.ok) { toast.error('추가에 실패했습니다.'); return; }
+    setNewCafeName('');
+    setNewCafeId('');
+    setShowAddCafeModal(false);
+    fetchCafes();
+  };
+
+  const handleDeleteCafe = async (id: string) => {
+    if (!confirm('삭제하시겠습니까?')) return;
+    await fetch(`/api/channels?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    fetchCafes();
+  };
+
+  const handleEditCafe = async () => {
+    if (!editCafe) return;
+    if (!editCafeName.trim()) { toast.warning('이름을 입력해주세요.'); return; }
+    if (!editCafeId.trim()) { toast.warning('카페 ID를 입력해주세요.'); return; }
+    const res = await fetch('/api/channels', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editCafe.id, newId: editCafeId.trim(), name: editCafeName.trim() }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      toast.error(err.error || '수정 실패');
+      return;
+    }
+    setShowEditCafeModal(false);
+    setEditCafe(null);
+    setEditCafeName('');
+    setEditCafeId('');
+    fetchCafes();
+  };
+
+  const lookupCafeName = async (id: string) => {
+    if (!id) return;
+    setCafeLookupLoading(true);
+    try {
+      const res = await fetch(`/api/cafe-lookup?id=${encodeURIComponent(id)}`);
+      const data = await res.json();
+      if (data.name) setNewCafeName(data.name);
+    } catch {}
+    setCafeLookupLoading(false);
+  };
+
+  const handleCopyLink = (id: string) => {
+    const link = `https://barosocial.vercel.app/mamcafe/${id}`;
+    navigator.clipboard.writeText(link);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // 로그아웃
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/admin/login');
+  };
+
+  // 상담 신청 목록 가져오기
+  const fetchConsultations = async (isInitial = false) => {
+    if (isInitial) setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('consultations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // status가 없는 데이터에 기본값 설정
+      const consultationsWithStatus = (data || []).map(item => ({
+        ...item,
+        status: item.status || '상담대기'
+      }));
+
+      setConsultations(consultationsWithStatus);
+    } catch (error: any) {
+      setError(error.message || '데이터를 불러오는데 실패했습니다.');
+    } finally {
+      if (isInitial) setLoading(false);
+    }
+  };
+
+  // 카페 ID → 이름 매핑 (추적링크 관리 탭의 cafes 상태에서 자동 생성)
+  const cafeIdToName: Record<string, string> = Object.fromEntries(cafes.map(c => [c.id, c.name]));
+
+  // 특수 케이스: 언더스코어 없이 저장된 값의 대분류/중분류 매핑
+  const specialSourceMappings: Record<string, { major: string; minor: string }> = {
+    '당근채팅': { major: '당근', minor: '당근채팅' },
+    '대표전화(당근)': { major: '당근', minor: '대표전화(당근)' },
+  };
+
+  // click_source 파싱: "바로폼_대분류_중분류" 또는 "대분류_중분류" → { major, minor, display }
+  const parseClickSource = (source: string | null) => {
+    if (!source) return { major: '바로폼', minor: '', display: '바로폼', needsCheck: false };
+    // 바로폼 단독 값
+    if (source === '바로폼') return { major: '바로폼', minor: '', display: '바로폼', needsCheck: false };
+    // 바로폼_ 접두사 제거
+    const isBaro = source.startsWith('바로폼_');
+    const stripped = isBaro ? source.slice(4) : source;
+    // 특수 케이스 매핑 확인
+    if (specialSourceMappings[stripped]) {
+      const { major, minor } = specialSourceMappings[stripped];
+      return { major, minor, display: stripped, needsCheck: false };
+    }
+    // 첫 번째 _ 기준으로 대분류 / 중분류 분리
+    const underscoreIdx = stripped.indexOf('_');
+    if (underscoreIdx === -1) {
+      const minor = stripped === '당근' ? '바로폼' : '';
+      return { major: stripped, minor, display: stripped, needsCheck: false };
+    }
+    const major = stripped.slice(0, underscoreIdx);
+    const rawMinor = stripped.slice(underscoreIdx + 1);
+    // referrer는 대분류명으로 표시
+    if (rawMinor === 'referrer') {
+      return { major, minor: major, display: `${major}_${major}`, needsCheck: false };
+    }
+    // 중분류가 카페 ID인 경우 이름으로 변환
+    const resolvedName = cafeIdToName[rawMinor] || CAFE_NAMES[rawMinor] || rawMinor;
+    // 맘카페인데 지정 제휴 카페에 없으면 확인필요 표시
+    const isUnknownMamcafe =
+      major === '맘카페' &&
+      rawMinor !== '확인필요' &&
+      !cafeIdToName[rawMinor] &&
+      !CAFE_NAMES[rawMinor] &&
+      !KNOWN_CAFE_NAMES.has(rawMinor);
+    const minor = isUnknownMamcafe ? `${resolvedName}(확인필요)` : resolvedName;
+    const display = `${major}_${minor}`;
+    return { major, minor, display, needsCheck: isUnknownMamcafe || rawMinor === '확인필요' };
+  };
+
+  // 날짜 포맷팅
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  };
+
+  // 상담 신청 추가
+  const handleAddConsultation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...formData,
+          is_manual_entry: true, // 수동 추가 플래그
+        }),
+      });
+
+      if (!response.ok) throw new Error('추가 실패');
+
+      // 폼 초기화 및 목록 새로고침
+      setFormData({
+        name: '',
+        contact: '',
+        education: '',
+        hope_course: '',
+        reason: '',
+        click_source: '',
+        subject_cost: '',
+        manager: '',
+        residence: '',
+        memo: '',
+        counsel_check: ''
+      });
+      setAddSourceMajor('');
+      setAddSourceMinor('');
+      setAddSourceCustom('');
+      setAddMamcafeNewId('');
+      setAddMamcafeNewName('');
+      setAddMamcafeTextInput('');
+      setAddCourseDirectMode(false);
+      setShowAddModal(false);
+      fetchConsultations();
+    } catch (error) {
+      toast.error('상담 신청 추가에 실패했습니다.');
+    }
+  };
+
+  // 메모 수정
+  const handleUpdateMemo = async () => {
+    if (!selectedConsultation) return;
+    
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: selectedConsultation.id, memo: memoText }),
+      });
+
+      if (!response.ok) throw new Error('메모 업데이트 실패');
+
+      setShowMemoModal(false);
+      setSelectedConsultation(null);
+      setMemoText('');
+      fetchConsultations();
+    } catch (error) {
+      toast.error('메모 저장에 실패했습니다.');
+    }
+  };
+
+  const openMemoModal = (consultation: Consultation) => {
+    setSelectedConsultation(consultation);
+    setMemoText(consultation.memo || '');
+    setShowMemoModal(true);
+  };
+
+  const closeMemoModal = () => {
+    setShowMemoModal(false);
+    setSelectedConsultation(null);
+    setMemoText('');
+  };
+
+  // 취득사유 수정
+  const handleUpdateReason = async () => {
+    if (!selectedConsultation) return;
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedConsultation.id, reason: reasonText }),
+      });
+      if (!response.ok) throw new Error('취득사유 업데이트 실패');
+      setShowReasonModal(false);
+      setSelectedConsultation(null);
+      setReasonText('');
+      fetchConsultations();
+    } catch (error) {
+      toast.error('취득사유 저장에 실패했습니다.');
+    }
+  };
+
+  const openReasonModal = (consultation: Consultation) => {
+    setSelectedConsultation(consultation);
+    setReasonText(consultation.reason || '');
+    setShowReasonModal(true);
+  };
+
+  const closeReasonModal = () => {
+    setShowReasonModal(false);
+    setSelectedConsultation(null);
+    setReasonText('');
+  };
+
+  // 상담체크 모달 열기/닫기
+  const openCounselCheckModal = (consultation: Consultation) => {
+    setSelectedConsultation(consultation);
+    const raw = consultation.counsel_check || '';
+    setCounselCheckText(raw);
+    // "기타:내용" 에서 내용 파싱
+    const etcItem = raw.split(', ').find(i => i.startsWith('기타:'));
+    setCounselCheckEtcInput(etcItem ? etcItem.slice(3) : '');
+    setShowCounselCheckModal(true);
+  };
+
+  const closeCounselCheckModal = () => {
+    setShowCounselCheckModal(false);
+    setSelectedConsultation(null);
+    setCounselCheckText('');
+    setCounselCheckEtcInput('');
+  };
+
+  // 상담체크 업데이트
+  const handleUpdateCounselCheck = async (newValue: string) => {
+    if (!selectedConsultation) return;
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedConsultation.id, counsel_check: newValue || null }),
+      });
+      if (!response.ok) throw new Error('상담체크 업데이트 실패');
+      setCounselCheckText(newValue);
+      fetchConsultations();
+    } catch (error) {
+      toast.error('상담체크 저장에 실패했습니다.');
+    }
+  };
+
+  // 과목비용 모달 열기/닫기
+  const openSubjectCostModal = (consultation: Consultation) => {
+    setSelectedConsultation(consultation);
+    setSubjectCostText(consultation.subject_cost ? consultation.subject_cost.toLocaleString() : '');
+    setShowSubjectCostModal(true);
+  };
+
+  const closeSubjectCostModal = () => {
+    setShowSubjectCostModal(false);
+    setSelectedConsultation(null);
+    setSubjectCostText('');
+  };
+
+  // 과목비용 업데이트
+  const handleUpdateSubjectCost = async () => {
+    if (!selectedConsultation) return;
+    
+    try {
+      const numericValue = subjectCostText.replace(/,/g, '');
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          id: selectedConsultation.id, 
+          subject_cost: numericValue ? parseInt(numericValue) : null 
+        }),
+      });
+
+      if (!response.ok) throw new Error('과목비용 업데이트 실패');
+
+      closeSubjectCostModal();
+      fetchConsultations();
+    } catch (error) {
+      toast.error('과목비용 저장에 실패했습니다.');
+    }
+  };
+
+  // 담당자 모달 열기/닫기
+  const openManagerModal = (consultation: Consultation) => {
+    setSelectedConsultation(consultation);
+    const mgr = consultation.manager || '';
+    setManagerText(mgr);
+    setManagerModalDirect(mgr !== '' && !uniqueManagers.includes(mgr));
+    setShowManagerModal(true);
+  };
+
+  const closeManagerModal = () => {
+    setShowManagerModal(false);
+    setSelectedConsultation(null);
+    setManagerText('');
+  };
+
+  // 담당자 업데이트
+  const handleUpdateManager = async () => {
+    if (!selectedConsultation) return;
+    
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          id: selectedConsultation.id, 
+          manager: managerText || null 
+        }),
+      });
+
+      if (!response.ok) throw new Error('담당자 업데이트 실패');
+
+      closeManagerModal();
+      fetchConsultations();
+    } catch (error) {
+      toast.error('담당자 저장에 실패했습니다.');
+    }
+  };
+
+  // 담당자 인라인 저장
+  const handleInlineManagerSave = async (id: number, value: string) => {
+    setEditingManagerId(null);
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, manager: value.trim() || null }),
+      });
+      if (!response.ok) throw new Error();
+      fetchConsultations();
+    } catch {
+      toast.error('담당자 저장에 실패했습니다.');
+    }
+  };
+
+  // 맘카페 click_source 모달
+  const openClickSourceModal = (consultation: Consultation) => {
+    setSelectedConsultation(consultation);
+    setClickSourceSearch('');
+    setShowClickSourceModal(true);
+  };
+
+  const closeClickSourceModal = () => {
+    setShowClickSourceModal(false);
+    setSelectedConsultation(null);
+    setClickSourceSearch('');
+  };
+
+  const handleUpdateClickSource = async (cafeId: string) => {
+    if (!selectedConsultation) return;
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedConsultation.id, click_source: `맘카페_${cafeId}` }),
+      });
+      if (!response.ok) throw new Error('저장 실패');
+      closeClickSourceModal();
+      fetchConsultations();
+    } catch {
+      toast.error('저장에 실패했습니다.');
+    }
+  };
+
+  // 전화번호 자동 포맷팅
+  const formatPhoneNumber = (value: string) => {
+    const numbers = value.replace(/[^0-9]/g, '');
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+    if (numbers.length <= 11) return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7)}`;
+    return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+  };
+
+  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setFormData({ ...formData, contact: formatted });
+  };
+
+  // 과목비용 포맷팅 (콤마 추가)
+  const formatSubjectCost = (value: string) => {
+    const numbers = value.replace(/[^0-9]/g, '');
+    if (!numbers) return '';
+    return parseInt(numbers).toLocaleString();
+  };
+
+  const handleSubjectCostChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatSubjectCost(e.target.value);
+    setSubjectCostText(formatted);
+  };
+
+  const handleFormSubjectCostChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatSubjectCost(e.target.value);
+    setFormData({ ...formData, subject_cost: formatted });
+  };
+
+  // 수정 모달 열기
+  const openEditModal = () => {
+    if (selectedIds.length !== 1) {
+      toast.warning('수정할 항목을 1개만 선택해주세요.');
+      return;
+    }
+    const consultation = consultations.find(c => c.id === selectedIds[0]);
+    if (consultation) {
+      setSelectedConsultation(consultation);
+      setFormData({
+        name: consultation.name,
+        contact: consultation.contact,
+        education: consultation.education || '',
+        hope_course: consultation.hope_course || '',
+        reason: consultation.reason || '',
+        click_source: consultation.click_source || '',
+        subject_cost: consultation.subject_cost ? consultation.subject_cost.toLocaleString() : '',
+        manager: consultation.manager || '',
+        residence: consultation.residence || '',
+        memo: consultation.memo || '',
+        counsel_check: consultation.counsel_check || ''
+      });
+      // 유입경로 칩 상태 초기화
+      const src = consultation.click_source || '';
+      const stripped = src.startsWith('바로폼_') ? src.slice(4) : src;
+      const uIdx = stripped.indexOf('_');
+      if (uIdx === -1) {
+        setAddSourceMajor(stripped);
+        setAddSourceMinor('');
+        setAddSourceCustom('');
+        setAddMamcafeTextInput('');
+      } else {
+        const maj = stripped.slice(0, uIdx);
+        const min = stripped.slice(uIdx + 1);
+        setAddSourceMajor(maj);
+        if (maj === '맘카페') {
+          setAddSourceMinor(min);
+          setAddMamcafeTextInput(CAFE_NAMES[min] || min);
+          setAddSourceCustom('');
+        } else if (['당근채팅', '대표전화(당근)'].includes(min)) {
+          setAddSourceMinor(min);
+          setAddSourceCustom('');
+        } else {
+          setAddSourceMinor('직접입력');
+          setAddSourceCustom(min);
+        }
+      }
+      setAddMamcafeNewId('');
+      setAddMamcafeNewName('');
+      // 희망과정 직접입력 모드 초기화
+      const hopeCourse = consultation.hope_course || '';
+      setAddCourseDirectMode(hopeCourse !== '' && !ADMIN_COURSE_OPTIONS.includes(hopeCourse));
+      // 담당자 직접입력 모드 초기화
+      const mgr = consultation.manager || '';
+      setManagerDirect(mgr !== '' && !uniqueManagers.includes(mgr));
+      setShowEditModal(true);
+    }
+  };
+
+  // 수정 저장
+  const handleEditConsultation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedConsultation) return;
+
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: selectedConsultation.id,
+          name: formData.name,
+          contact: formData.contact,
+          education: formData.education || null,
+          reason: formData.reason || null,
+          click_source: formData.click_source || null,
+          subject_cost: formData.subject_cost ? parseInt(formData.subject_cost.replace(/,/g, '')) : null,
+          manager: formData.manager || null,
+          residence: formData.residence || null,
+          memo: formData.memo || null,
+          counsel_check: formData.counsel_check || null,
+        }),
+      });
+
+      if (!response.ok) throw new Error('수정 실패');
+
+      setFormData({
+        name: '',
+        contact: '',
+        education: '',
+        hope_course: '',
+        reason: '',
+        click_source: '',
+        subject_cost: '',
+        manager: '',
+        residence: '',
+        memo: '',
+        counsel_check: ''
+      });
+      setShowEditModal(false);
+      setSelectedConsultation(null);
+      setSelectedIds([]);
+      fetchConsultations();
+    } catch (error) {
+      toast.error('상담 신청 수정에 실패했습니다.');
+    }
+  };
+
+  // 개별 상태 변경
+  const handleStatusChange = async (id: number, newStatus: ConsultationStatus) => {
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id, status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('상태 업데이트 실패');
+
+      fetchConsultations();
+    } catch (error) {
+      toast.error('상태 변경에 실패했습니다.');
+    }
+  };
+
+  // 체크박스 관련 함수
+  const toggleSelectAll = () => {
+    if (selectedIds.length === paginatedConsultations.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(paginatedConsultations.map(c => c.id));
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(selectedId => selectedId !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
+
+  // 민간자격증으로 이동
+  const handleMoveToPrivateCert = async () => {
+    if (!confirm(`선택한 ${selectedIds.length}건을 민간자격증으로 이동하시겠습니까?`)) return;
+    const targets = consultations.filter(c => selectedIds.includes(c.id));
+    try {
+      for (const item of targets) {
+        await fetch('/api/private-cert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: item.name,
+            contact: item.contact,
+            education: item.education,
+            hope_course: item.hope_course,
+            reason: item.reason,
+            click_source: item.click_source,
+            memo: item.memo,
+            counsel_check: item.counsel_check,
+            status: item.status,
+            subject_cost: item.subject_cost,
+            manager: item.manager,
+            residence: item.residence,
+          }),
+        });
+      }
+      await fetch('/api/consultations', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      setSelectedIds([]);
+      fetchConsultations();
+      toast.success(`${targets.length}건이 민간자격증으로 이동되었습니다.`);
+    } catch {
+      toast.error('이동에 실패했습니다.');
+    }
+  };
+
+  // 일괄 삭제
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) {
+      toast.warning('삭제할 항목을 선택해주세요.');
+      return;
+    }
+
+    if (!confirm(`선택한 ${selectedIds.length}개의 항목을 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/consultations', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      if (!response.ok) throw new Error('삭제 실패');
+
+      setSelectedIds([]);
+      fetchConsultations();
+    } catch (error) {
+      toast.error('삭제에 실패했습니다.');
+    }
+  };
+
+  // 필터링
+  const filteredConsultations = consultations.filter(consultation => {
+    // 검색 텍스트 필터 (이름, 연락처, 취득사유, 메모, 유입경로)
+    if (searchText) {
+      const searchLower = searchText.toLowerCase();
+      // 연락처는 하이픈 제거하고 비교
+      const contactWithoutHyphen = consultation.contact.replace(/-/g, '');
+      const searchWithoutHyphen = searchText.replace(/-/g, '');
+      const matchesSearch = 
+        consultation.name.toLowerCase().includes(searchLower) ||
+        contactWithoutHyphen.toLowerCase().includes(searchWithoutHyphen.toLowerCase()) ||
+        (consultation.reason && consultation.reason.toLowerCase().includes(searchLower)) ||
+        (consultation.memo && consultation.memo.toLowerCase().includes(searchLower)) ||
+        (consultation.click_source && consultation.click_source.toLowerCase().includes(searchLower));
+      if (!matchesSearch) return false;
+    }
+    // 상태 필터
+    if (statusFilter !== 'all' && consultation.status !== statusFilter) {
+      return false;
+    }
+    // 담당자 필터
+    if (managerFilter !== 'all') {
+      if (managerFilter === 'none' && consultation.manager) return false;
+      if (managerFilter !== 'none' && consultation.manager !== managerFilter) return false;
+    }
+    // 대분류 필터
+    if (majorCategoryFilter !== 'all') {
+      const { major } = parseClickSource(consultation.click_source);
+      if (major !== majorCategoryFilter) return false;
+    }
+    // 중분류 필터
+    if (minorCategoryFilter !== 'all') {
+      const parsed = parseClickSource(consultation.click_source);
+      if (minorCategoryFilter === '__needs_check__') {
+        if (!parsed.needsCheck) return false;
+      } else {
+        if (parsed.minor !== minorCategoryFilter) return false;
+      }
+    }
+    // 취득사유 필터
+    if (reasonFilter !== 'all') {
+      const reasons = (consultation.reason || '').split(', ').map(r => r.trim()).filter(Boolean);
+      if (!reasons.includes(reasonFilter)) return false;
+    }
+    // 고민 필터
+    if (counselCheckFilter !== 'all') {
+      const checks = (consultation.counsel_check || '').split(', ').map(c => c.trim()).filter(Boolean);
+      const matchesCounsel = checks.some(c => {
+        if (counselCheckFilter === '기타') return c.startsWith('기타');
+        return c === counselCheckFilter;
+      });
+      if (!matchesCounsel) return false;
+    }
+    // 날짜 필터
+    if (startDate || endDate) {
+      const consultationDate = new Date(consultation.created_at);
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (consultationDate < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (consultationDate > end) return false;
+      }
+    }
+    return true;
+  });
+
+  // 페이징 계산 (필터링된 데이터 기준)
+  const totalPages = Math.ceil(filteredConsultations.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedConsultations = filteredConsultations.slice(startIndex, endIndex);
+
+  // 고유 담당자 목록
+  const uniqueManagers = Array.from(new Set(consultations.map(c => c.manager).filter(Boolean))) as string[];
+
+  // 고유 대분류 / 중분류 목록
+  const uniqueMajorCategories = Array.from(
+    new Set(consultations.map(c => parseClickSource(c.click_source).major).filter(Boolean))
+  ).sort() as string[];
+
+  // 고유 취득사유 목록
+  const uniqueReasons = ['즉시취업', '이직', '미래준비', '취업'];
+
+  // 고유 고민(상담체크) 목록
+  const uniqueCounselChecks = ['타기관', '자체가격', '직장', '육아', '가격비교', '기타'];
+
+  // 확인필요 건수
+  const needsCheckCount = consultations.filter(c => parseClickSource(c.click_source).needsCheck).length;
+  // 중분류: 실제 데이터 있는 것만 표시 (확인필요 항목 제외하고 정렬)
+  const uniqueMinorCategories = Array.from(
+    new Set(
+      consultations
+        .filter(c => {
+          if (majorCategoryFilter === 'all') return true;
+          return parseClickSource(c.click_source).major === majorCategoryFilter;
+        })
+        .map(c => parseClickSource(c.click_source))
+        .filter(p => Boolean(p.minor) && !p.needsCheck)
+        .map(p => p.minor)
+    )
+  ).sort() as string[];
+
+  // 등록률 통계
+  const HAKJEOM_MANAGERS = ['이규준', '김하준'];
+  const calcRegRate = (list: Consultation[]) => {
+    const total = list.length;
+    const registered = list.filter(c => c.status === '등록완료').length;
+    const rate = total > 0 ? Math.round((registered / total) * 100) : 0;
+    return { total, registered, rate };
+  };
+  const managerStats = HAKJEOM_MANAGERS.map(name => {
+    const all = consultations.filter(c => c.manager === name);
+    const recent30 = [...all]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 30);
+    return { name, overall: calcRegRate(all), recent: calcRegRate(recent30) };
+  });
+  const hakjeomAll = consultations.filter(c => c.manager && HAKJEOM_MANAGERS.includes(c.manager));
+  const hakjeomRecent30 = [...hakjeomAll]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 30);
+  const hakjeomStats = { overall: calcRegRate(hakjeomAll), recent: calcRegRate(hakjeomRecent30) };
+  const topManagerName = managerStats.length > 0
+    ? managerStats.reduce((best, m) => m.recent.rate > best.recent.rate ? m : best).name
+    : null;
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    setSelectedIds([]);
+  };
+
+  // 검색어 하이라이트 함수
+  const highlightText = (text: string | null | undefined, query: string) => {
+    if (!text || !query) return text || '';
+    
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return parts.map((part, index) => 
+      part.toLowerCase() === query.toLowerCase() 
+        ? <span key={index} className={styles.highlight}>{part}</span>
+        : part
+    );
+  };
+
+  // 연락처 하이라이트 함수 (하이픈 무시)
+  const highlightContact = (contact: string, query: string) => {
+    if (!query) return contact;
+    
+    // 검색어에 하이픈이 포함되어 있으면 일반 하이라이트 사용
+    if (query.includes('-')) {
+      return highlightText(contact, query);
+    }
+    
+    // 검색어에서 숫자만 추출
+    const searchNumbers = query.replace(/[^0-9]/g, '');
+    if (searchNumbers.length < 3) return contact;
+    
+    // 연락처를 숫자만 추출
+    const contactNumbers = contact.replace(/-/g, '');
+    
+    // 검색어가 포함되어 있는지 확인
+    const matchIndex = contactNumbers.toLowerCase().indexOf(searchNumbers.toLowerCase());
+    if (matchIndex === -1) return contact;
+    
+    // 하이픈 포함한 원본에서 매칭 위치 찾기
+    let currentNumberIndex = 0;
+    let startPos = -1;
+    let endPos = -1;
+    
+    for (let i = 0; i < contact.length; i++) {
+      if (contact[i] !== '-') {
+        if (currentNumberIndex === matchIndex && startPos === -1) {
+          startPos = i;
+        }
+        if (currentNumberIndex === matchIndex + searchNumbers.length - 1) {
+          endPos = i + 1;
+          break;
+        }
+        currentNumberIndex++;
+      }
+    }
+    
+    if (startPos === -1 || endPos === -1) return contact;
+    
+    // 하이라이트 적용
+    return (
+      <>
+        {contact.substring(0, startPos)}
+        <span className={styles.highlight}>{contact.substring(startPos, endPos)}</span>
+        {contact.substring(endPos)}
+      </>
+    );
+  };
+
+  // 엑셀 다운로드 함수
+  const handleExcelDownload = () => {
+    // 선택된 항목이 있으면 선택된 것만, 없으면 필터링된 전체 다운로드
+    const dataToDownload = selectedIds.length > 0 
+      ? consultations.filter(c => selectedIds.includes(c.id))
+      : filteredConsultations;
+
+    if (dataToDownload.length === 0) {
+      toast.warning('다운로드할 데이터가 없습니다.');
+      return;
+    }
+
+    // CSV 형식으로 다운로드
+    const headers = ['이름', '연락처', '최종학력', '취득사유', '유입 경로', '과목비용', '담당자', '거주지', '메모', '신청일시', '상태'];
+    const csvData = dataToDownload.map(consultation => [
+      consultation.name,
+      consultation.contact,
+      consultation.education || '',
+      consultation.reason || '',
+      consultation.click_source || '',
+      consultation.subject_cost || '',
+      consultation.manager || '',
+      consultation.residence || '',
+      consultation.memo || '',
+      formatDate(consultation.created_at),
+      consultation.status || '상담대기중'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    // UTF-8 BOM 추가 (엑셀에서 한글 깨짐 방지)
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    const fileName = selectedIds.length > 0 
+      ? `상담신청_선택${selectedIds.length}건_${new Date().toISOString().split('T')[0]}.csv`
+      : `상담신청_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 관리자 대시보드
+  return (
+    <div className={styles.container}>
+      <header className={styles.header}>
+<div className={styles.titleRow}>
+          <h1 className={styles.title}>상담 신청 관리 ({filteredConsultations.length}건)</h1>
+        </div>
+        <div className={styles.filterRow}>
+          <div className={styles.filterGroup}>
+            <input
+              type="text"
+              placeholder="이름, 연락처, 취득사유, 메모 검색..."
+              value={searchText}
+              onChange={(e) => { setSearchText(e.target.value); setCurrentPage(1); }}
+              className={styles.searchInput}
+            />
+          </div>
+          <div className={styles.filterGroup}>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
+              className={styles.dateInput}
+            />
+          </div>
+          <span className={styles.dateSeparator}>~</span>
+          <div className={styles.filterGroup}>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
+              className={styles.dateInput}
+            />
+          </div>
+          {(searchText || statusFilter !== 'all' || managerFilter !== 'all' || majorCategoryFilter !== 'all' || minorCategoryFilter !== 'all' || reasonFilter !== 'all' || counselCheckFilter !== 'all' || startDate || endDate) && (
+            <button
+              onClick={() => { setSearchText(''); setStatusFilter('all'); setManagerFilter('all'); setMajorCategoryFilter('all'); setMinorCategoryFilter('all'); setReasonFilter('all'); setCounselCheckFilter('all'); setStartDate(''); setEndDate(''); setCurrentPage(1); }}
+              className={styles.clearFilterButton}
+            >
+              필터 초기화
+            </button>
+          )}
+        </div>
+        <div className={styles.headerActions}>
+          <button onClick={() => { setShowAddModal(true); setManagerDirect(false); }} className={styles.addButton}>추가</button>
+          {selectedIds.length === 1 && (
+            <button onClick={openEditModal} className={styles.editButton}>수정</button>
+          )}
+          {selectedIds.length > 0 && (
+            <button onClick={handleMoveToPrivateCert} className={styles.editButton}>민간이동 ({selectedIds.length})</button>
+          )}
+          {selectedIds.length > 0 && (
+            <button onClick={handleBulkDelete} className={styles.deleteButton}>삭제 ({selectedIds.length})</button>
+          )}
+          <button onClick={handleExcelDownload} className={styles.excelButton}>
+            {selectedIds.length > 0 ? `선택 항목 다운로드 (${selectedIds.length})` : '엑셀 다운로드'}
+          </button>
+        </div>
+        <div className={styles.statsTable}>
+          <div className={styles.statsHeader}>
+            <span className={styles.statsColName} />
+            <span className={styles.statsColLabel}>최근 30건</span>
+            <span className={styles.statsColLabel}>전체</span>
+          </div>
+          <div className={`${styles.statsRow} ${styles.statsRowGroup}`}>
+            <span className={styles.statsName}>학점사업부</span>
+            <div className={styles.statsCell}>
+              <span className={styles.statsRate}>{hakjeomStats.recent.rate}%</span>
+            </div>
+            <div className={styles.statsCell}>
+              <span className={styles.statsRate}>{hakjeomStats.overall.rate}%</span>
+            </div>
+          </div>
+          {[...managerStats].sort((a, b) => b.recent.rate - a.recent.rate).map(m => {
+            const isTop = m.name === topManagerName && m.recent.rate > 0;
+            return (
+              <div key={m.name} className={`${styles.statsRow} ${isTop ? styles.statsRowTop : ''}`}>
+                <span className={`${styles.statsName} ${isTop ? styles.statsNameTop : ''}`}>
+                  {m.name}
+                  {isTop && <span className={styles.rankBadge}>🥇</span>}
+                </span>
+                <div className={styles.statsCell}>
+                  <span className={`${styles.statsRate} ${isTop ? styles.statsRateTop : ''}`}>{m.recent.rate}%</span>
+                </div>
+                <div className={styles.statsCell}>
+                  <span className={`${styles.statsRate} ${isTop ? styles.statsRateTop : ''}`}>{m.overall.rate}%</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </header>
+
+      {/* 추적링크 탭 (숨김) */}
+      {false && (
+        <div className={styles.trackingContainer}>
+          {cafesLoading && <div className={styles.loading}>로딩 중...</div>}
+          <div className={styles.trackingToolbar}>
+            <input
+              type="text"
+              placeholder="카페명 또는 ID 검색..."
+              value={cafeSearchText}
+              onChange={e => setCafeSearchText(e.target.value)}
+              className={styles.trackingSearchInput}
+            />
+            <span className={styles.trackingCount}>{cafes.filter(c => !cafeSearchText || c.name.includes(cafeSearchText) || c.id.includes(cafeSearchText)).length}개</span>
+            <button type="button" onClick={() => { setNewCafeName(''); setNewCafeId(''); setShowAddCafeModal(true); }} className={styles.addButton}>
+              + 카페 추가
+            </button>
+          </div>
+          <table className={styles.trackingTable}>
+            <thead>
+              <tr>
+                <th>카페명</th>
+                <th>카페 ID</th>
+                <th>추적 링크</th>
+                <th>복사</th>
+                <th>수정</th>
+                <th>삭제</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cafes
+                .filter(c => !cafeSearchText || c.name.includes(cafeSearchText) || c.id.includes(cafeSearchText))
+                .map(cafe => {
+                  const link = `https://barosocial.vercel.app/mamcafe/${cafe.id}`;
+                  return (
+                    <tr key={cafe.id}>
+                      <td>{cafe.name}</td>
+                      <td><code className={styles.cafeIdCode}>{cafe.id}</code></td>
+                      <td><span className={styles.trackingLink}>{link}</span></td>
+                      <td>
+                        <button
+                          type="button"
+                          className={`${styles.copyBtn} ${copiedId === cafe.id ? styles.copyBtnDone : ''}`}
+                          onClick={() => handleCopyLink(cafe.id)}
+                        >{copiedId === cafe.id ? '복사됨!' : '복사'}</button>
+                      </td>
+                      <td>
+                        <button type="button" className={styles.editCafeBtn} onClick={() => {
+                          setEditCafe({ id: cafe.id, name: cafe.name });
+                          setEditCafeId(cafe.id);
+                          setEditCafeName(cafe.name);
+                          setShowEditCafeModal(true);
+                        }}>수정</button>
+                      </td>
+                      <td>
+                        <button type="button" className={styles.deleteCafeBtn} onClick={() => handleDeleteCafe(cafe.id)}>삭제</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              {cafes.filter(c => !cafeSearchText || c.name.includes(cafeSearchText) || c.id.includes(cafeSearchText)).length === 0 && (
+                <tr><td colSpan={6} className={styles.empty}>검색 결과가 없습니다.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 카페 수정 모달 */}
+      {showEditCafeModal && editCafe && (
+        <div className={styles.modalOverlay} onClick={() => setShowEditCafeModal(false)}>
+          <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>카페 수정</h2>
+            <div className={styles.formGroup}>
+              <label>카페 ID</label>
+              <input
+                type="text"
+                value={editCafeId}
+                onChange={e => setEditCafeId(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleEditCafe(); }}
+                placeholder="카페 ID"
+                autoFocus
+              />
+            </div>
+            <div className={styles.formGroup} style={{ marginTop: 16 }}>
+              <label>카페 이름</label>
+              <input
+                type="text"
+                value={editCafeName}
+                onChange={e => setEditCafeName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleEditCafe(); }}
+                placeholder="카페 이름 입력"
+              />
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={handleEditCafe} className={styles.submitButton}>저장</button>
+              <button type="button" onClick={() => setShowEditCafeModal(false)} className={styles.cancelButton}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 카페 추가 모달 */}
+      {showAddCafeModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowAddCafeModal(false)}>
+          <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>맘카페 추가</h2>
+            <div className={styles.formGroup}>
+              <label>카페 이름</label>
+              <input
+                type="text"
+                placeholder="예: 순광맘"
+                value={newCafeName}
+                onChange={e => setNewCafeName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCafe(e); } }}
+                autoFocus
+              />
+            </div>
+            <div className={styles.formGroup} style={{ marginTop: 16 }}>
+              <label>카페 ID 또는 네이버 카페 URL</label>
+              <div className={styles.cafeIdInputRow}>
+                <input
+                  type="text"
+                  placeholder="예: cjsam  또는  https://cafe.naver.com/cjsam"
+                  value={newCafeId}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const match = val.match(/(?:https?:\/\/)?(?:m\.)?cafe\.naver\.com\/([a-zA-Z0-9_]+)/);
+                    if (match) {
+                      setNewCafeId(match[1]);
+                    } else {
+                      setNewCafeId(val.trim());
+                    }
+                  }}
+                  onBlur={() => lookupCafeName(newCafeId.trim())}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); lookupCafeName(newCafeId.trim()); } }}
+                />
+                <button
+                  type="button"
+                  className={styles.lookupBtn}
+                  onClick={() => lookupCafeName(newCafeId.trim())}
+                  disabled={!newCafeId || cafeLookupLoading}
+                >
+                  {cafeLookupLoading ? '조회중...' : '이름 조회'}
+                </button>
+              </div>
+              {newCafeId && (
+                <div className={styles.trackingPreview}>
+                  생성될 링크: <span>https://barosocial.vercel.app/mamcafe/{newCafeId.trim()}</span>
+                </div>
+              )}
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={e => handleAddCafe(e)} className={styles.submitButton}>추가</button>
+              <button type="button" onClick={() => setShowAddCafeModal(false)} className={styles.cancelButton}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(loading ? (
+        <div className={styles.loading}>로딩 중...</div>
+      ) : error ? (
+        <div className={styles.errorMessage}>{error}</div>
+      ) : (
+        <>
+        <div className={styles.tableContainer}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.checkboxCell}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.length === paginatedConsultations.length && paginatedConsultations.length > 0}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
+                {/* 대분류 */}
+                <th className={`${styles.thFilterable} ${majorCategoryFilter !== 'all' ? styles.thFiltered : ''}`}>
+                  <div className={styles.thInner}>
+                    <span>대분류</span>
+                    <button
+                      className={`${styles.thFilterBtn} ${majorCategoryFilter !== 'all' ? styles.thFilterBtnActive : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                        setOpenFilterColumn(openFilterColumn === 'major' ? null : 'major');
+                      }}
+                    >▾</button>
+                  </div>
+                </th>
+                {/* 중분류 */}
+                <th className={`${styles.thFilterable} ${minorCategoryFilter !== 'all' ? styles.thFiltered : ''}`}>
+                  <div className={styles.thInner}>
+                    <span>중분류</span>
+                    <button
+                      className={`${styles.thFilterBtn} ${minorCategoryFilter !== 'all' ? styles.thFilterBtnActive : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                        setOpenFilterColumn(openFilterColumn === 'minor' ? null : 'minor');
+                      }}
+                    >▾</button>
+                  </div>
+                </th>
+                <th style={{ minWidth: 80 }}>이름</th>
+                <th>연락처</th>
+                <th>최종학력</th>
+                <th>희망과정</th>
+                {/* 취득사유 */}
+                <th className={`${styles.thFilterable} ${reasonFilter !== 'all' ? styles.thFiltered : ''}`}>
+                  <div className={styles.thInner}>
+                    <span>취득사유</span>
+                    <button
+                      className={`${styles.thFilterBtn} ${reasonFilter !== 'all' ? styles.thFilterBtnActive : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                        setOpenFilterColumn(openFilterColumn === 'reason' ? null : 'reason');
+                      }}
+                    >▾</button>
+                  </div>
+                </th>
+                <th>과목비용</th>
+                {/* 담당자 */}
+                <th className={`${styles.thFilterable} ${managerFilter !== 'all' ? styles.thFiltered : ''}`}>
+                  <div className={styles.thInner}>
+                    <span>담당자</span>
+                    <button
+                      className={`${styles.thFilterBtn} ${managerFilter !== 'all' ? styles.thFilterBtnActive : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                        setOpenFilterColumn(openFilterColumn === 'manager' ? null : 'manager');
+                      }}
+                    >▾</button>
+                  </div>
+                </th>
+                <th>거주지</th>
+                <th>메모</th>
+                {/* 고민 */}
+                <th className={`${styles.thFilterable} ${counselCheckFilter !== 'all' ? styles.thFiltered : ''}`}>
+                  <div className={styles.thInner}>
+                    <span>고민</span>
+                    <button
+                      className={`${styles.thFilterBtn} ${counselCheckFilter !== 'all' ? styles.thFilterBtnActive : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                        setOpenFilterColumn(openFilterColumn === 'counselCheck' ? null : 'counselCheck');
+                      }}
+                    >▾</button>
+                  </div>
+                </th>
+                <th>신청일시</th>
+                {/* 상태 */}
+                <th className={`${styles.thFilterable} ${statusFilter !== 'all' ? styles.thFiltered : ''}`}>
+                  <div className={styles.thInner}>
+                    <span>상태</span>
+                    <button
+                      className={`${styles.thFilterBtn} ${statusFilter !== 'all' ? styles.thFilterBtnActive : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setDropdownPos({ top: rect.bottom + 4, left: rect.left - 60 });
+                        setOpenFilterColumn(openFilterColumn === 'status' ? null : 'status');
+                      }}
+                    >▾</button>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedConsultations.length === 0 ? (
+                <tr>
+                  <td colSpan={13} className={styles.empty}>
+                    신청 내역이 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                paginatedConsultations.map((consultation) => (
+                  <tr key={consultation.id} className={selectedIds.includes(consultation.id) ? styles.selectedRow : ''}>
+                    <td className={styles.checkboxCell}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(consultation.id)}
+                        onChange={() => toggleSelect(consultation.id)}
+                      />
+                    </td>
+                    <td>{highlightText(parseClickSource(consultation.click_source).major, searchText) || '-'}</td>
+                    <td style={{ padding: 0 }}>
+                      {parseClickSource(consultation.click_source).major === '맘카페' ? (
+                        <div
+                          className={`${styles.minorCell} ${styles.minorCellEditable} ${!parseClickSource(consultation.click_source).minor || parseClickSource(consultation.click_source).minor === '확인필요' ? styles.minorCellEmpty : ''} ${parseClickSource(consultation.click_source).needsCheck ? styles.needsCheck : ''}`}
+                          onClick={() => openClickSourceModal(consultation)}
+                          title="클릭하여 카페 수정"
+                        >
+                          <span className={styles.minorCellText}>
+                            {highlightText(parseClickSource(consultation.click_source).minor, searchText) || '카페 선택...'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div
+                          className={styles.minorCell}
+                          style={parseClickSource(consultation.click_source).needsCheck ? { color: '#ef4444', fontWeight: 600 } : {}}
+                        >
+                          {highlightText(parseClickSource(consultation.click_source).minor, searchText) || '-'}
+                        </div>
+                      )}
+                    </td>
+                    <td>{highlightText(consultation.name, searchText)}</td>
+                    <td
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(consultation.contact.replace(/-/g, ''));
+                        toast.success('복사되었습니다.');
+                      }}
+                      title="클릭하여 복사"
+                    >
+                      {highlightContact(consultation.contact, searchText)}
+                    </td>
+                    <td>{consultation.education || '-'}</td>
+                    <td>{consultation.hope_course || '-'}</td>
+                    <td>
+                      <div
+                        className={`${styles.memoCell} ${!consultation.reason ? styles.empty : ''}`}
+                        onClick={() => openReasonModal(consultation)}
+                        title={consultation.reason || '취득사유 입력...'}
+                      >
+                        {consultation.reason ? highlightText(consultation.reason, searchText) : '취득사유 입력...'}
+                      </div>
+                    </td>
+                    <td>
+                      <div 
+                        className={`${styles.memoCell} ${!consultation.subject_cost ? styles.empty : ''}`}
+                        onClick={() => openSubjectCostModal(consultation)}
+                      >
+                        {consultation.subject_cost ? consultation.subject_cost.toLocaleString() + '원' : '비용 입력...'}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        className={`${styles.memoCell} ${!consultation.manager ? styles.empty : ''}`}
+                        onClick={() => openManagerModal(consultation)}
+                      >
+                        {consultation.manager ? highlightText(consultation.manager, searchText) : '담당자 입력...'}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        className={`${styles.memoCell} ${!consultation.residence ? styles.empty : ''}`}
+                        onClick={() => openResidenceModal(consultation)}
+                        title={consultation.residence || '거주지 입력...'}
+                      >
+                        {consultation.residence ? highlightText(consultation.residence, searchText) : '거주지 입력...'}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        className={`${styles.memoCell} ${!consultation.memo ? styles.empty : ''}`}
+                        onClick={() => openMemoModal(consultation)}
+                        title={consultation.memo || '메모 추가...'}
+                      >
+                        {consultation.memo ? highlightText(consultation.memo, searchText) : '메모 추가...'}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        className={styles.counselCheckCell}
+                        onClick={() => openCounselCheckModal(consultation)}
+                      >
+                        {consultation.counsel_check
+                          ? consultation.counsel_check.split(', ').filter(Boolean).map((item) => (
+                              <span key={item} className={styles.counselCheckTag}>
+                                {item.startsWith('기타:') ? `기타: ${item.slice(3)}` : item}
+                              </span>
+                            ))
+                          : <span className={styles.empty}>체크...</span>
+                        }
+                      </div>
+                    </td>
+                    <td>{formatDate(consultation.created_at)}</td>
+                    <td>
+                      <select
+                        value={consultation.status || '상담대기'}
+                        onChange={(e) => handleStatusChange(consultation.id, e.target.value as ConsultationStatus)}
+                        className={`${styles.statusSelect} ${styles[`status${(consultation.status || '상담대기').replace(/\s/g, '')}`]}`}
+                      >
+                        <option value="상담대기">상담대기</option>
+                        <option value="상담중">상담중</option>
+                        <option value="보류">보류</option>
+                        <option value="등록대기">등록대기</option>
+                        <option value="등록완료">등록완료</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+
+          {/* 페이징 */}
+          {totalPages > 1 && (
+            <div className={styles.pagination}>
+              <button
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className={styles.pageButton}
+              >
+                이전
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => goToPage(page)}
+                  className={`${styles.pageButton} ${currentPage === page ? styles.activePage : ''}`}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className={styles.pageButton}
+              >
+                다음
+              </button>
+            </div>
+          )}
+        </div>
+        </>
+      ))}
+
+      {/* 수동 추가 모달 */}
+      {showAddModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowAddModal(false)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>상담 신청 추가</h2>
+            <form onSubmit={handleAddConsultation} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label>이름 *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="이름을 입력하세요"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>연락처 *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.contact}
+                  onChange={handleContactChange}
+                  placeholder="010-1234-5678"
+                  maxLength={13}
+                />
+              </div>
+              {/* 최종학력 - 토스 드롭다운 */}
+              <div className={styles.formGroup}>
+                <label>최종학력</label>
+                <div className={styles.tossDropdown} ref={addEduRef}>
+                  <button
+                    type="button"
+                    className={styles.tossDropdownTrigger}
+                    onClick={() => setAddEduOpen(o => !o)}
+                  >
+                    <span className={formData.education ? '' : styles.tossDropdownPlaceholder}>
+                      {formData.education || '선택하세요 (선택사항)'}
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d={addEduOpen ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} stroke="#8b95a1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                  {addEduOpen && (
+                    <div className={styles.tossDropdownMenu}>
+                      <button type="button" className={`${styles.tossDropdownItem} ${!formData.education ? styles.tossDropdownItemActive : ''}`}
+                        onClick={() => { setFormData(p => ({ ...p, education: '' })); setAddEduOpen(false); }}>
+                        <span>선택 안 함</span>
+                        {!formData.education && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </button>
+                      {EDUCATION_OPTIONS.map(opt => (
+                        <button type="button" key={opt}
+                          className={`${styles.tossDropdownItem} ${formData.education === opt ? styles.tossDropdownItemActive : ''}`}
+                          onClick={() => { setFormData(p => ({ ...p, education: opt })); setAddEduOpen(false); }}>
+                          <span>{opt}</span>
+                          {formData.education === opt && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* 희망과정 - 토스 드롭다운 */}
+              <div className={styles.formGroup}>
+                <label>희망과정</label>
+                <div className={styles.tossDropdown} ref={addCourseRef}>
+                  <button
+                    type="button"
+                    className={styles.tossDropdownTrigger}
+                    onClick={() => setAddCourseOpen(o => !o)}
+                  >
+                    <span className={formData.hope_course ? '' : styles.tossDropdownPlaceholder}>
+                      {formData.hope_course || '선택하세요 (선택사항)'}
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d={addCourseOpen ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} stroke="#8b95a1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                  {addCourseOpen && (
+                    <div className={styles.tossDropdownMenu}>
+                      <button type="button" className={`${styles.tossDropdownItem} ${!formData.hope_course && !addCourseDirectMode ? styles.tossDropdownItemActive : ''}`}
+                        onClick={() => { setFormData(p => ({ ...p, hope_course: '' })); setAddCourseDirectMode(false); setAddCourseOpen(false); }}>
+                        <span>선택 안 함</span>
+                        {!formData.hope_course && !addCourseDirectMode && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </button>
+                      {ADMIN_COURSE_OPTIONS.map(opt => (
+                        <button type="button" key={opt}
+                          className={`${styles.tossDropdownItem} ${formData.hope_course === opt && !addCourseDirectMode ? styles.tossDropdownItemActive : ''}`}
+                          onClick={() => { setFormData(p => ({ ...p, hope_course: opt })); setAddCourseDirectMode(false); setAddCourseOpen(false); }}>
+                          <span>{opt}</span>
+                          {formData.hope_course === opt && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </button>
+                      ))}
+                      <button type="button"
+                        className={`${styles.tossDropdownItem} ${styles.tossDropdownItemDirect}`}
+                        onClick={() => { setFormData(p => ({ ...p, hope_course: '' })); setAddCourseDirectMode(true); setAddCourseOpen(false); }}
+                      >
+                        <span>직접 입력...</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* 직접 입력 모드 */}
+                {addCourseDirectMode && (
+                  <input
+                    type="text"
+                    className={styles.tossDirectInput}
+                    value={formData.hope_course}
+                    placeholder="희망과정 직접 입력"
+                    autoFocus
+                    onChange={e => setFormData(p => ({ ...p, hope_course: e.target.value }))}
+                  />
+                )}
+              </div>
+              <div className={styles.formGroup}>
+                <label>취득사유 (복수 선택 가능)</label>
+                <div className={styles.checkboxGroup}>
+                  {['즉시취업', '이직', '미래준비', '취업'].map((opt) => {
+                    const selected = formData.reason.split(', ').filter(Boolean).includes(opt);
+                    return (
+                      <label key={opt} className={`${styles.checkboxOption} ${selected ? styles.checkboxOptionSelected : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => {
+                            const current = formData.reason.split(', ').filter(Boolean);
+                            const updated = selected ? current.filter(r => r !== opt) : [...current, opt];
+                            setFormData({ ...formData, reason: updated.join(', ') });
+                          }}
+                          style={{ display: 'none' }}
+                        />
+                        {opt}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* 유입경로 - 칩 2단계 선택 */}
+              <div className={styles.formGroup}>
+                <label>유입 경로</label>
+                <div className={styles.sourceChips}>
+                  {['당근', '맘카페', '네이버', '인스타', '유튜브', '틱톡', '카카오', '페이스북', '기타'].map(m => (
+                    <button type="button" key={m}
+                      className={`${styles.sourceChip} ${addSourceMajor === m ? styles.sourceChipSelected : ''}`}
+                      onClick={() => {
+                        const newMajor = addSourceMajor === m ? '' : m;
+                        setAddSourceMajor(newMajor);
+                        setAddSourceMinor('');
+                        setAddSourceCustom('');
+                        setAddMamcafeTextInput('');
+                        applyAddSource(newMajor, '', '');
+                      }}>{m}</button>
+                  ))}
+                </div>
+                {/* 맘카페 서브 */}
+                {addSourceMajor === '맘카페' && (
+                  <div className={styles.sourceSubChips}>
+                    {cafes.map(c => (
+                      <button type="button" key={c.id}
+                        className={`${styles.sourceChip} ${addSourceMinor === c.id ? styles.sourceChipSelected : ''}`}
+                        onClick={() => {
+                          const newMinor = addSourceMinor === c.id ? '' : c.id;
+                          setAddSourceMinor(newMinor);
+                          setAddSourceCustom('');
+                          setAddMamcafeNewId('');
+                          setAddMamcafeNewName('');
+                          setAddMamcafeTextInput(newMinor ? (c.name.startsWith('http') ? c.id : c.name) : '');
+                          applyAddSource('맘카페', newMinor, '');
+                        }}>{c.name.startsWith('http') ? c.id : c.name}</button>
+                    ))}
+                    <button type="button"
+                      className={`${styles.sourceChip} ${addSourceMinor === '직접입력' ? styles.sourceChipSelected : ''}`}
+                      onClick={() => {
+                        setAddSourceMinor(addSourceMinor === '직접입력' ? '' : '직접입력');
+                        setAddMamcafeNewId('');
+                        setAddMamcafeNewName('');
+                        applyAddSource('맘카페', '', '');
+                      }}>+ 직접 추가</button>
+                  </div>
+                )}
+                {/* 활동 맘카페 텍스트 입력 */}
+                {addSourceMajor === '맘카페' && (
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      type="text"
+                      style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e8eb', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }}
+                      placeholder="활동하고 계신 맘카페를 적어주세요 (제휴여부 확인)"
+                      value={addMamcafeTextInput}
+                      onChange={e => handleMamcafeTextInput(e.target.value)}
+                    />
+                    {addMamcafeTextInput && (
+                      <div style={{ fontSize: 12, marginTop: 4, color: addSourceMinor === '확인필요' ? '#f59e0b' : '#3182f6' }}>
+                        {addSourceMinor === '확인필요'
+                          ? '⚠ 지정된 제휴 맘카페가 아닙니다 → 확인필요로 분류됩니다'
+                          : `✓ 제휴 맘카페 확인: ${cafes.find(c => c.id === addSourceMinor)?.name || CAFE_NAMES[addSourceMinor] || addSourceMinor}`}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {addSourceMajor === '맘카페' && addSourceMinor === '직접입력' && (
+                  <div className={styles.sourceAddForm}>
+                    <input
+                      type="text"
+                      className={styles.sourceAddInput}
+                      value={addMamcafeNewId}
+                      placeholder="카페 ID 또는 네이버 카페 URL"
+                      onChange={async e => {
+                        const val = e.target.value;
+                        const urlMatch = val.match(/(?:https?:\/\/)?(?:m\.)?cafe\.naver\.com\/([a-zA-Z0-9_]+)/);
+                        if (urlMatch) {
+                          // URL → ID 즉시 추출
+                          setAddMamcafeNewId(urlMatch[1]);
+                          try {
+                            const res = await fetch(`/api/cafe-lookup?id=${encodeURIComponent(urlMatch[1])}`);
+                            const data = await res.json();
+                            if (data.name) setAddMamcafeNewName(data.name);
+                          } catch {}
+                        } else {
+                          setAddMamcafeNewId(val);
+                        }
+                      }}
+                    />
+                    <input
+                      type="text"
+                      className={styles.sourceAddInput}
+                      value={addMamcafeNewName}
+                      placeholder="카페 이름 (예: 순광맘)"
+                      onChange={e => setAddMamcafeNewName(e.target.value)}
+                    />
+                    <button type="button" className={styles.sourceAddBtn}
+                      onClick={handleAddMamcafe}
+                      disabled={addMamcafeAdding}>
+                      {addMamcafeAdding ? '추가 중...' : '카페 추가'}
+                    </button>
+                  </div>
+                )}
+                {/* 당근 서브 */}
+                {addSourceMajor === '당근' && (
+                  <div className={styles.sourceSubChips}>
+                    {['당근채팅', '대표전화(당근)'].map(opt => (
+                      <button type="button" key={opt}
+                        className={`${styles.sourceChip} ${addSourceMinor === opt ? styles.sourceChipSelected : ''}`}
+                        onClick={() => {
+                          const newMinor = addSourceMinor === opt ? '' : opt;
+                          setAddSourceMinor(newMinor);
+                          setAddSourceCustom('');
+                          applyAddSource('당근', newMinor, '');
+                        }}>{opt}</button>
+                    ))}
+                    <button type="button"
+                      className={`${styles.sourceChip} ${addSourceMinor === '직접입력' ? styles.sourceChipSelected : ''}`}
+                      onClick={() => {
+                        setAddSourceMinor('직접입력');
+                        setAddSourceCustom('');
+                        applyAddSource('당근', '', '');
+                      }}>직접입력</button>
+                  </div>
+                )}
+                {addSourceMajor === '당근' && addSourceMinor === '직접입력' && (
+                  <input
+                    type="text"
+                    className={styles.sourceCustomInput}
+                    value={addSourceCustom}
+                    placeholder="당근 경로 입력 (예: 채팅, 전화 등)"
+                    onChange={e => {
+                      setAddSourceCustom(e.target.value);
+                      applyAddSource('당근', '직접입력', e.target.value);
+                    }}
+                  />
+                )}
+                {formData.click_source && (
+                  <span className={styles.sourcePreview}>{formData.click_source}</span>
+                )}
+              </div>
+              <div className={styles.formGroup}>
+                <label>과목비용</label>
+                <input
+                  type="text"
+                  value={formData.subject_cost}
+                  onChange={handleFormSubjectCostChange}
+                  placeholder="숫자만 입력 (선택사항)"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>담당자</label>
+                <input
+                  type="text"
+                  value={formData.manager}
+                  onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
+                  placeholder="담당자 이름 (선택사항)"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>거주지</label>
+                <input
+                  type="text"
+                  value={formData.residence}
+                  onChange={(e) => setFormData({ ...formData, residence: e.target.value })}
+                  placeholder="거주지 (선택사항)"
+                />
+              </div>
+              <div className={styles.modalActions}>
+                <button type="submit" className={styles.submitButton}>추가하기</button>
+                <button type="button" onClick={() => setShowAddModal(false)} className={styles.cancelButton}>
+                  취소
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 수정 모달 */}
+      {showEditModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={() => setShowEditModal(false)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>상담 신청 수정</h2>
+            <form onSubmit={handleEditConsultation} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label>이름 *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="이름을 입력하세요"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>연락처 *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.contact}
+                  onChange={handleContactChange}
+                  placeholder="010-1234-5678"
+                  maxLength={13}
+                />
+              </div>
+              {/* 최종학력 - 토스 드롭다운 */}
+              <div className={styles.formGroup}>
+                <label>최종학력</label>
+                <div className={styles.tossDropdown} ref={addEduRef}>
+                  <button
+                    type="button"
+                    className={styles.tossDropdownTrigger}
+                    onClick={() => setAddEduOpen(o => !o)}
+                  >
+                    <span className={formData.education ? '' : styles.tossDropdownPlaceholder}>
+                      {formData.education || '선택하세요 (선택사항)'}
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d={addEduOpen ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} stroke="#8b95a1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                  {addEduOpen && (
+                    <div className={styles.tossDropdownMenu}>
+                      <button type="button" className={`${styles.tossDropdownItem} ${!formData.education ? styles.tossDropdownItemActive : ''}`}
+                        onClick={() => { setFormData(p => ({ ...p, education: '' })); setAddEduOpen(false); }}>
+                        <span>선택 안 함</span>
+                        {!formData.education && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </button>
+                      {EDUCATION_OPTIONS.map(opt => (
+                        <button type="button" key={opt}
+                          className={`${styles.tossDropdownItem} ${formData.education === opt ? styles.tossDropdownItemActive : ''}`}
+                          onClick={() => { setFormData(p => ({ ...p, education: opt })); setAddEduOpen(false); }}>
+                          <span>{opt}</span>
+                          {formData.education === opt && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* 희망과정 - 토스 드롭다운 */}
+              <div className={styles.formGroup}>
+                <label>희망과정</label>
+                <div className={styles.tossDropdown} ref={addCourseRef}>
+                  <button
+                    type="button"
+                    className={styles.tossDropdownTrigger}
+                    onClick={() => setAddCourseOpen(o => !o)}
+                  >
+                    <span className={formData.hope_course ? '' : styles.tossDropdownPlaceholder}>
+                      {formData.hope_course || '선택하세요 (선택사항)'}
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d={addCourseOpen ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} stroke="#8b95a1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                  {addCourseOpen && (
+                    <div className={styles.tossDropdownMenu}>
+                      <button type="button" className={`${styles.tossDropdownItem} ${!formData.hope_course && !addCourseDirectMode ? styles.tossDropdownItemActive : ''}`}
+                        onClick={() => { setFormData(p => ({ ...p, hope_course: '' })); setAddCourseDirectMode(false); setAddCourseOpen(false); }}>
+                        <span>선택 안 함</span>
+                        {!formData.hope_course && !addCourseDirectMode && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </button>
+                      {ADMIN_COURSE_OPTIONS.map(opt => (
+                        <button type="button" key={opt}
+                          className={`${styles.tossDropdownItem} ${formData.hope_course === opt && !addCourseDirectMode ? styles.tossDropdownItemActive : ''}`}
+                          onClick={() => { setFormData(p => ({ ...p, hope_course: opt })); setAddCourseDirectMode(false); setAddCourseOpen(false); }}>
+                          <span>{opt}</span>
+                          {formData.hope_course === opt && <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </button>
+                      ))}
+                      <button type="button"
+                        className={`${styles.tossDropdownItem} ${styles.tossDropdownItemDirect}`}
+                        onClick={() => { setFormData(p => ({ ...p, hope_course: '' })); setAddCourseDirectMode(true); setAddCourseOpen(false); }}
+                      >
+                        <span>직접 입력...</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {addCourseDirectMode && (
+                  <input
+                    type="text"
+                    className={styles.tossDirectInput}
+                    value={formData.hope_course}
+                    placeholder="희망과정 직접 입력"
+                    autoFocus
+                    onChange={e => setFormData(p => ({ ...p, hope_course: e.target.value }))}
+                  />
+                )}
+              </div>
+              <div className={styles.formGroup}>
+                <label>취득사유 (복수 선택 가능)</label>
+                <div className={styles.checkboxGroup}>
+                  {['즉시취업', '이직', '미래준비', '취업'].map((opt) => {
+                    const selected = formData.reason.split(', ').filter(Boolean).includes(opt);
+                    return (
+                      <label key={opt} className={`${styles.checkboxOption} ${selected ? styles.checkboxOptionSelected : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => {
+                            const current = formData.reason.split(', ').filter(Boolean);
+                            const updated = selected ? current.filter(r => r !== opt) : [...current, opt];
+                            setFormData({ ...formData, reason: updated.join(', ') });
+                          }}
+                          style={{ display: 'none' }}
+                        />
+                        {opt}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* 유입경로 - 칩 2단계 선택 (추가 모달과 동일) */}
+              <div className={styles.formGroup}>
+                <label>유입 경로</label>
+                <div className={styles.sourceChips}>
+                  {['당근', '맘카페', '네이버', '인스타', '유튜브', '틱톡', '카카오', '페이스북', '기타'].map(m => (
+                    <button type="button" key={m}
+                      className={`${styles.sourceChip} ${addSourceMajor === m ? styles.sourceChipSelected : ''}`}
+                      onClick={() => {
+                        const newMajor = addSourceMajor === m ? '' : m;
+                        setAddSourceMajor(newMajor);
+                        setAddSourceMinor('');
+                        setAddSourceCustom('');
+                        setAddMamcafeTextInput('');
+                        applyAddSource(newMajor, '', '');
+                      }}>{m}</button>
+                  ))}
+                </div>
+                {/* 맘카페 서브 */}
+                {addSourceMajor === '맘카페' && (
+                  <div className={styles.sourceSubChips}>
+                    {cafes.map(c => (
+                      <button type="button" key={c.id}
+                        className={`${styles.sourceChip} ${addSourceMinor === c.id ? styles.sourceChipSelected : ''}`}
+                        onClick={() => {
+                          const newMinor = addSourceMinor === c.id ? '' : c.id;
+                          setAddSourceMinor(newMinor);
+                          setAddSourceCustom('');
+                          setAddMamcafeNewId('');
+                          setAddMamcafeNewName('');
+                          setAddMamcafeTextInput(newMinor ? (c.name.startsWith('http') ? c.id : c.name) : '');
+                          applyAddSource('맘카페', newMinor, '');
+                        }}>{c.name.startsWith('http') ? c.id : c.name}</button>
+                    ))}
+                    <button type="button"
+                      className={`${styles.sourceChip} ${addSourceMinor === '직접입력' ? styles.sourceChipSelected : ''}`}
+                      onClick={() => {
+                        setAddSourceMinor(addSourceMinor === '직접입력' ? '' : '직접입력');
+                        setAddMamcafeNewId('');
+                        setAddMamcafeNewName('');
+                        applyAddSource('맘카페', '', '');
+                      }}>+ 직접 추가</button>
+                  </div>
+                )}
+                {/* 활동 맘카페 텍스트 입력 */}
+                {addSourceMajor === '맘카페' && (
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      type="text"
+                      style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e8eb', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }}
+                      placeholder="활동하고 계신 맘카페를 적어주세요 (제휴여부 확인)"
+                      value={addMamcafeTextInput}
+                      onChange={e => handleMamcafeTextInput(e.target.value)}
+                    />
+                    {addMamcafeTextInput && (
+                      <div style={{ fontSize: 12, marginTop: 4, color: addSourceMinor === '확인필요' ? '#f59e0b' : '#3182f6' }}>
+                        {addSourceMinor === '확인필요'
+                          ? '⚠ 지정된 제휴 맘카페가 아닙니다 → 확인필요로 분류됩니다'
+                          : `✓ 제휴 맘카페 확인: ${cafes.find(c => c.id === addSourceMinor)?.name || CAFE_NAMES[addSourceMinor] || addSourceMinor}`}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {addSourceMajor === '맘카페' && addSourceMinor === '직접입력' && (
+                  <div className={styles.sourceAddForm}>
+                    <input type="text" className={styles.sourceAddInput} value={addMamcafeNewId}
+                      placeholder="카페 ID 또는 네이버 카페 URL"
+                      onChange={async e => {
+                        const val = e.target.value;
+                        const urlMatch = val.match(/(?:https?:\/\/)?(?:m\.)?cafe\.naver\.com\/([a-zA-Z0-9_]+)/);
+                        if (urlMatch) {
+                          setAddMamcafeNewId(urlMatch[1]);
+                          try {
+                            const res = await fetch(`/api/cafe-lookup?id=${encodeURIComponent(urlMatch[1])}`);
+                            const data = await res.json();
+                            if (data.name) setAddMamcafeNewName(data.name);
+                          } catch {}
+                        } else { setAddMamcafeNewId(val); }
+                      }}
+                    />
+                    <input type="text" className={styles.sourceAddInput} value={addMamcafeNewName}
+                      placeholder="카페 이름 (예: 순광맘)"
+                      onChange={e => setAddMamcafeNewName(e.target.value)}
+                    />
+                    <button type="button" className={styles.sourceAddBtn} onClick={handleAddMamcafe} disabled={addMamcafeAdding}>
+                      {addMamcafeAdding ? '추가 중...' : '카페 추가'}
+                    </button>
+                  </div>
+                )}
+                {/* 당근 서브 */}
+                {addSourceMajor === '당근' && (
+                  <div className={styles.sourceSubChips}>
+                    {['당근채팅', '대표전화(당근)'].map(opt => (
+                      <button type="button" key={opt}
+                        className={`${styles.sourceChip} ${addSourceMinor === opt ? styles.sourceChipSelected : ''}`}
+                        onClick={() => {
+                          const newMinor = addSourceMinor === opt ? '' : opt;
+                          setAddSourceMinor(newMinor);
+                          setAddSourceCustom('');
+                          applyAddSource('당근', newMinor, '');
+                        }}>{opt}</button>
+                    ))}
+                    <button type="button"
+                      className={`${styles.sourceChip} ${addSourceMinor === '직접입력' ? styles.sourceChipSelected : ''}`}
+                      onClick={() => { setAddSourceMinor('직접입력'); setAddSourceCustom(''); applyAddSource('당근', '', ''); }}>직접입력</button>
+                  </div>
+                )}
+                {addSourceMajor === '당근' && addSourceMinor === '직접입력' && (
+                  <input type="text" className={styles.sourceCustomInput} value={addSourceCustom}
+                    placeholder="당근 경로 입력 (예: 채팅, 전화 등)"
+                    onChange={e => { setAddSourceCustom(e.target.value); applyAddSource('당근', '직접입력', e.target.value); }}
+                  />
+                )}
+                {formData.click_source && (
+                  <span className={styles.sourcePreview}>{formData.click_source}</span>
+                )}
+              </div>
+              <div className={styles.formGroup}>
+                <label>과목비용</label>
+                <input
+                  type="text"
+                  value={formData.subject_cost}
+                  onChange={handleFormSubjectCostChange}
+                  placeholder="숫자만 입력 (선택사항)"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>담당자</label>
+                <input
+                  type="text"
+                  value={formData.manager}
+                  onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
+                  placeholder="담당자 이름 (선택사항)"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>거주지</label>
+                <input
+                  type="text"
+                  value={formData.residence}
+                  onChange={(e) => setFormData({ ...formData, residence: e.target.value })}
+                  placeholder="거주지 (선택사항)"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>메모</label>
+                <textarea
+                  value={formData.memo}
+                  onChange={(e) => setFormData({ ...formData, memo: e.target.value })}
+                  placeholder="메모 (선택사항)"
+                  rows={3}
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>고민</label>
+                <textarea
+                  value={formData.counsel_check}
+                  onChange={(e) => setFormData({ ...formData, counsel_check: e.target.value })}
+                  placeholder="고민 내용 (선택사항)"
+                  rows={3}
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+              <div className={styles.modalActions}>
+                <button type="submit" className={styles.submitButton}>수정하기</button>
+                <button type="button" onClick={() => setShowEditModal(false)} className={styles.cancelButton}>
+                  취소
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 거주지 수정 모달 */}
+      {showResidenceModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={closeResidenceModal}>
+          <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>거주지 수정</h2>
+            <div className={styles.memoInfo}>
+              <p><strong>이름:</strong> {selectedConsultation.name}</p>
+              <p><strong>연락처:</strong> {selectedConsultation.contact}</p>
+            </div>
+            <div className={styles.formGroup}>
+              <label>거주지</label>
+              <input
+                type="text"
+                value={residenceText}
+                onChange={e => setResidenceText(e.target.value)}
+                placeholder="거주지 입력"
+              />
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.submitButton} onClick={handleUpdateResidence}>저장</button>
+              <button type="button" className={styles.cancelButton} onClick={closeResidenceModal}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 메모 편집 모달 */}
+      {showMemoModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={closeMemoModal}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>메모 편집</h2>
+            <div className={styles.memoInfo}>
+              <p><strong>이름:</strong> {selectedConsultation.name}</p>
+              <p><strong>연락처:</strong> {selectedConsultation.contact}</p>
+            </div>
+            <div className={styles.formGroup}>
+              <label>메모</label>
+              <textarea
+                value={memoText}
+                onChange={(e) => setMemoText(e.target.value)}
+                rows={5}
+                placeholder="메모를 입력하세요..."
+                className={styles.memoTextarea}
+              />
+            </div>
+            <div className={styles.modalActions}>
+              <button onClick={handleUpdateMemo} className={styles.submitButton}>
+                저장
+              </button>
+              <button onClick={closeMemoModal} className={styles.cancelButton}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 취득사유 편집 모달 */}
+      {showReasonModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={closeReasonModal}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>취득사유 편집</h2>
+            <div className={styles.memoInfo}>
+              <p><strong>이름:</strong> {selectedConsultation.name}</p>
+              <p><strong>연락처:</strong> {selectedConsultation.contact}</p>
+            </div>
+            <div className={styles.formGroup}>
+              <label>취득사유 (복수 선택 가능)</label>
+              <div className={styles.checkboxGroup}>
+                {['즉시취업', '이직', '미래준비', '취업'].map((opt) => {
+                  const selected = reasonText.split(', ').filter(Boolean).includes(opt);
+                  return (
+                    <label key={opt} className={`${styles.checkboxOption} ${selected ? styles.checkboxOptionSelected : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => {
+                          const current = reasonText.split(', ').filter(Boolean);
+                          const updated = selected ? current.filter(r => r !== opt) : [...current, opt];
+                          setReasonText(updated.join(', '));
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                      {opt}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div className={styles.modalActions}>
+              <button onClick={handleUpdateReason} className={styles.submitButton}>
+                저장
+              </button>
+              <button onClick={closeReasonModal} className={styles.cancelButton}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 고민 모달 */}
+      {showCounselCheckModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={closeCounselCheckModal}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>고민</h2>
+            <div className={styles.memoInfo}>
+              <p><strong>이름:</strong> {selectedConsultation.name}</p>
+              <p><strong>연락처:</strong> {selectedConsultation.contact}</p>
+            </div>
+            <div className={styles.formGroup}>
+              <label>항목 선택 (복수 선택 가능)</label>
+              <div className={styles.checkboxGroup}>
+                {['타기관', '자체가격', '직장', '육아', '가격비교', '기타'].map((opt) => {
+                  // 기타는 "기타" 또는 "기타:xxx" 형태로 저장되므로 prefix 체크
+                  const selected = opt === '기타'
+                    ? counselCheckText.split(', ').some(i => i === '기타' || i.startsWith('기타:'))
+                    : counselCheckText.split(', ').filter(Boolean).includes(opt);
+                  return (
+                    <label key={opt} className={`${styles.checkboxOption} ${selected ? styles.checkboxOptionSelected : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => {
+                          // 기타 제외한 현재 항목들
+                          const current = counselCheckText.split(', ').filter(Boolean).filter(i => opt === '기타' ? !(i === '기타' || i.startsWith('기타:')) : i !== opt);
+                          let updated: string[];
+                          if (selected) {
+                            updated = current;
+                            if (opt === '기타') setCounselCheckEtcInput('');
+                          } else {
+                            updated = [...current, opt === '기타' ? (counselCheckEtcInput ? `기타:${counselCheckEtcInput}` : '기타') : opt];
+                          }
+                          const newVal = updated.join(', ');
+                          setCounselCheckText(newVal);
+                          handleUpdateCounselCheck(newVal);
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                      {opt}
+                    </label>
+                  );
+                })}
+              </div>
+              {/* 기타 선택 시 텍스트 입력 */}
+              {counselCheckText.split(', ').some(i => i === '기타' || i.startsWith('기타:')) && (
+                <input
+                  type="text"
+                  className={styles.etcInput}
+                  placeholder="기타 내용을 입력하세요..."
+                  value={counselCheckEtcInput}
+                  onChange={(e) => setCounselCheckEtcInput(e.target.value)}
+                  onBlur={() => {
+                    const current = counselCheckText.split(', ').filter(Boolean).filter(i => !(i === '기타' || i.startsWith('기타:')));
+                    const etcVal = counselCheckEtcInput ? `기타:${counselCheckEtcInput}` : '기타';
+                    const newVal = [...current, etcVal].join(', ');
+                    setCounselCheckText(newVal);
+                    handleUpdateCounselCheck(newVal);
+                  }}
+                  autoFocus
+                />
+              )}
+            </div>
+            <div className={styles.modalActions}>
+              <button onClick={closeCounselCheckModal} className={styles.cancelButton}>
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 과목비용 편집 모달 */}
+      {showSubjectCostModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={closeSubjectCostModal}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>과목비용 편집</h2>
+            <div className={styles.memoInfo}>
+              <p><strong>이름:</strong> {selectedConsultation.name}</p>
+              <p><strong>연락처:</strong> {selectedConsultation.contact}</p>
+            </div>
+            <div className={styles.formGroup}>
+              <label>과목비용</label>
+              <input
+                type="text"
+                value={subjectCostText}
+                onChange={handleSubjectCostChange}
+                placeholder="숫자만 입력하세요..."
+              />
+            </div>
+            <div className={styles.modalActions}>
+              <button onClick={handleUpdateSubjectCost} className={styles.submitButton}>
+                저장
+              </button>
+              <button onClick={closeSubjectCostModal} className={styles.cancelButton}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 담당자 편집 모달 */}
+      {showManagerModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={closeManagerModal}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>담당자 편집</h2>
+            <div className={styles.memoInfo}>
+              <p><strong>이름:</strong> {selectedConsultation.name}</p>
+              <p><strong>연락처:</strong> {selectedConsultation.contact}</p>
+            </div>
+            {uniqueManagers.length > 0 && (
+              <div className={styles.counselCheckOptions}>
+                {uniqueManagers.map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`${styles.counselCheckOption} ${managerText === m ? styles.counselCheckOptionActive : ''}`}
+                    onClick={() => setManagerText(managerText === m ? '' : m)}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className={styles.formGroup}>
+              <label>직접 입력</label>
+              <input
+                type="text"
+                value={managerText}
+                onChange={e => setManagerText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleUpdateManager(); }}
+                placeholder="담당자 이름을 입력하세요"
+              />
+            </div>
+            <div className={styles.modalActions}>
+              <button onClick={handleUpdateManager} className={styles.submitButton}>
+                저장
+              </button>
+              <button onClick={closeManagerModal} className={styles.cancelButton}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───── TH 필터 드롭다운 (position: fixed) ───── */}
+      {openFilterColumn && (
+        <div
+          ref={filterDropdownRef}
+          className={styles.thFilterDropdown}
+          style={{ top: dropdownPos.top, left: dropdownPos.left }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {openFilterColumn === 'major' && (
+            <div className={styles.thFilterSection}>
+              {['all', ...uniqueMajorCategories].map(cat => (
+                <div
+                  key={cat}
+                  className={`${styles.thFilterItem} ${majorCategoryFilter === cat ? styles.thFilterItemSelected : ''}`}
+                  onClick={() => { setMajorCategoryFilter(cat); setMinorCategoryFilter('all'); setCurrentPage(1); setOpenFilterColumn(null); }}
+                >{cat === 'all' ? '전체' : cat}</div>
+              ))}
+            </div>
+          )}
+          {openFilterColumn === 'minor' && (
+            <div className={styles.thFilterSection}>
+              {['all', ...(needsCheckCount > 0 ? ['__needs_check__'] : []), ...uniqueMinorCategories].map(cat => (
+                <div
+                  key={cat}
+                  className={`${styles.thFilterItem} ${minorCategoryFilter === cat ? styles.thFilterItemSelected : ''}`}
+                  style={cat === '__needs_check__' ? { color: '#ef4444', fontWeight: 600 } : {}}
+                  onClick={() => { setMinorCategoryFilter(cat); setCurrentPage(1); setOpenFilterColumn(null); }}
+                >{cat === 'all' ? '전체' : cat === '__needs_check__' ? `확인필요 (${needsCheckCount})` : cat}</div>
+              ))}
+            </div>
+          )}
+          {openFilterColumn === 'manager' && (
+            <div className={styles.thFilterSection}>
+              {[{ val: 'all', label: '전체' }, { val: 'none', label: '담당자 없음' }, ...uniqueManagers.map(m => ({ val: m, label: m }))].map(({ val, label }) => (
+                <div
+                  key={val}
+                  className={`${styles.thFilterItem} ${managerFilter === val ? styles.thFilterItemSelected : ''}`}
+                  onClick={() => { setManagerFilter(val); setCurrentPage(1); }}
+                >{label}</div>
+              ))}
+            </div>
+          )}
+          {openFilterColumn === 'status' && (
+            <div className={styles.thFilterSection}>
+              {['all', '상담대기', '상담중', '보류', '등록대기', '등록완료'].map(opt => (
+                <div
+                  key={opt}
+                  className={`${styles.thFilterItem} ${statusFilter === opt ? styles.thFilterItemSelected : ''}`}
+                  onClick={() => { setStatusFilter(opt as ConsultationStatus | 'all'); setCurrentPage(1); }}
+                >{opt === 'all' ? '전체' : opt}</div>
+              ))}
+            </div>
+          )}
+          {openFilterColumn === 'reason' && (
+            <div className={styles.thFilterSection}>
+              {['all', ...uniqueReasons].map(opt => (
+                <div
+                  key={opt}
+                  className={`${styles.thFilterItem} ${reasonFilter === opt ? styles.thFilterItemSelected : ''}`}
+                  onClick={() => { setReasonFilter(opt); setCurrentPage(1); }}
+                >{opt === 'all' ? '전체' : opt}</div>
+              ))}
+            </div>
+          )}
+          {openFilterColumn === 'counselCheck' && (
+            <div className={styles.thFilterSection}>
+              {['all', ...uniqueCounselChecks].map(opt => (
+                <div
+                  key={opt}
+                  className={`${styles.thFilterItem} ${counselCheckFilter === opt ? styles.thFilterItemSelected : ''}`}
+                  onClick={() => { setCounselCheckFilter(opt); setCurrentPage(1); }}
+                >{opt === 'all' ? '전체' : opt}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 맘카페 click_source 편집 모달 */}
+      {showClickSourceModal && selectedConsultation && (
+        <div className={styles.modalOverlay} onClick={closeClickSourceModal}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>맘카페 수정</h2>
+            <div className={styles.memoInfo}>
+              <p><strong>{selectedConsultation.name}</strong> · 현재: <span style={{ color: '#3182f6' }}>{parseClickSource(selectedConsultation.click_source).minor || '미선택'}</span></p>
+            </div>
+            {/* 검색 */}
+            <div className={styles.cafeSearchBox}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                <circle cx="6.5" cy="6.5" r="5" stroke="#8b95a1" strokeWidth="1.5"/>
+                <path d="M10 10l3 3" stroke="#8b95a1" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              <input
+                type="text"
+                value={clickSourceSearch}
+                onChange={(e) => setClickSourceSearch(e.target.value)}
+                placeholder="카페 이름 검색..."
+                autoFocus
+                className={styles.cafeSearchInput}
+              />
+              {clickSourceSearch && (
+                <button type="button" onClick={() => setClickSourceSearch('')} className={styles.cafeSearchClear}>✕</button>
+              )}
+            </div>
+            {/* 리스트 */}
+            <div className={styles.cafeList}>
+              {(() => {
+                const currentCafeId = selectedConsultation.click_source?.replace('맘카페_', '');
+                const filtered = CAFE_CONFIG.filter(c =>
+                  !clickSourceSearch ||
+                  c.name.includes(clickSourceSearch) ||
+                  c.id.includes(clickSourceSearch)
+                );
+                if (filtered.length === 0) return (
+                  <div className={styles.cafeListEmpty}>검색 결과가 없습니다</div>
+                );
+                return filtered.map(cafe => {
+                  const isSelected = currentCafeId === cafe.id;
+                  return (
+                    <button
+                      key={cafe.id}
+                      type="button"
+                      onClick={() => handleUpdateClickSource(cafe.id)}
+                      className={`${styles.cafeListItem} ${isSelected ? styles.cafeListItemSelected : ''}`}
+                    >
+                      <span className={styles.cafeListName}>{cafe.name}</span>
+                      <span className={styles.cafeListId}>{cafe.id}</span>
+                      {isSelected && (
+                        <svg width="14" height="10" viewBox="0 0 14 10" fill="none" style={{ flexShrink: 0 }}>
+                          <path d="M1 5l4 4 8-8" stroke="#3182f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            <div className={styles.modalActions}>
+              <button onClick={closeClickSourceModal} className={styles.cancelButton}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 담당자 datalist */}
+      <datalist id="managerOptions">
+        {uniqueManagers.map(m => <option key={m} value={m} />)}
+      </datalist>
+
+      {/* click_source datalist */}
+      <datalist id="clickSourceOptions">
+        {CAFE_CONFIG.map(c => <option key={c.id} value={`맘카페_${c.id}`} label={`맘카페 > ${c.name}`} />)}
+      </datalist>
+    </div>
+  );
+}
