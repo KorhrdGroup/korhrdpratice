@@ -340,8 +340,8 @@ function StepFlowContent({ clickSource }: { clickSource: string }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.png"
-            alt="한평생교육"
-            style={{ height: "auto", width: "148px" }}
+            alt="덧셈원격평생교육원"
+            style={{ height: "auto", width: "220px" }}
           />
         </div>
       </header>

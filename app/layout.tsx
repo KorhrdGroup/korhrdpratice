@@ -17,25 +17,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "한평생교육 무료상담",
-  description: "한평생교육 무료상담",
+  title: "덧셈원격평생교육원",
+  description: "덧셈원격평생교육원",
   openGraph: {
-    title: "한평생교육 무료상담",
-    description: "한평생교육 무료상담",
+    title: "덧셈원격평생교육원",
+    description: "덧셈원격평생교육원",
     images: [
       {
         url: "/og-image.png",
         width: 800,
         height: 540,
-        alt: "한평생교육 무료상담",
+        alt: "덧셈원격평생교육원",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "한평생교육 무료상담",
-    description: "한평생교육 무료상담",
+    title: "덧셈원격평생교육원",
+    description: "덧셈원격평생교육원",
     images: ["/og-image.png"],
   },
 };
