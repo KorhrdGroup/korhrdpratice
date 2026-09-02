@@ -106,7 +106,7 @@ export default function PayForm({ amount, goodsName }: { amount: number; goodsNa
   const labelStyle: React.CSSProperties = { display: 'block', fontSize: 14, fontWeight: 600, color: '#4e5968', marginBottom: 8 };
 
   return (
-    <div style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 16, boxShadow: '0 6px 24px rgba(15,23,42,0.08)', padding: '32px 24px' }}>
+    <div style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 16, padding: '32px 24px' }}>
       <Script
         src="https://web.nicepay.co.kr/v3/webstd/js/nicepay-3.0.js"
         strategy="afterInteractive"

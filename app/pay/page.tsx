@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export default function Page() {
   const { amount, goodsName } = getPayProduct();
   return (
-    <main style={{ minHeight: 'calc(100vh - 180px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#f2f4f6' }}>
+    <main style={{ minHeight: 'calc(100vh - 180px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#fff' }}>
       <PayForm amount={amount} goodsName={goodsName} />
     </main>
   );
