@@ -22,8 +22,8 @@ export default function PrivacyPage() {
 
         <section className={styles.privacySection}>
           <p className={styles.effectiveDate}>
-            <strong>공고일자:</strong> 2026년 1월 29일<br />
-            <strong>시행일자:</strong> 2026년 1월 29일
+            <strong>공고일자:</strong> 2026년 9월 2일<br />
+            <strong>시행일자:</strong> 2026년 9월 2일
           </p>
         </section>
       </div>

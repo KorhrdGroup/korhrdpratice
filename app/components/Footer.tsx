@@ -14,9 +14,11 @@ export default function Footer() {
         </div>
 
         <div className={styles.footerInfo}>
-          {/* TODO: 덧셈원격평생교육원 대표자명·사업자등록번호 확인 후 교체 */}
           <p className={styles.infoLine}>
-            덧셈원격평생교육원 | 대표 ○○○ | 사업자등록번호 000-00-00000
+            경기도 의정부시 의정부동 486-11, 601호 일부 | 대표전화 1661-7768 | 상담번호 1661-7769
+          </p>
+          <p className={styles.infoLine}>
+            주식회사 한평생그룹 대표자 양병웅 | 사업자번호 227-88-03196 | 통신판매번호 제2024-서울도봉-0983호
           </p>
           <div className={styles.footerLinks}>
             <Link href="/terms" className={styles.footerLink}>
@@ -28,7 +30,7 @@ export default function Footer() {
             </Link>
           </div>
           <p className={styles.copyright}>
-            2026 © 덧셈원격평생교육원. All rights reserved.
+            COPYRIGHT ⓒ 주식회사한평생그룹 ALL RIGHTS RESERVED.
           </p>
         </div>
       </div>
