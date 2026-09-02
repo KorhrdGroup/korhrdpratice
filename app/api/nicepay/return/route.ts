@@ -11,7 +11,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
  * ReturnURL(이 주소)로 직접 POST 합니다. 승인 API(NextAppURL)까지 성공해야 결제 완료입니다.
  *
  * 금액(Amt)은 콜백에 실려오지 않는 경우가 있어(모바일) 결제 준비 때 기록한
- * payments(ready) 행에서 찾습니다.
+ * hpedu_practice_payments(ready) 행에서 찾습니다.
  */
 
 export const dynamic = "force-dynamic";
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   let order: Order | null = null;
   if (moid) {
     const { data } = await supabaseAdmin
-      .from("payments")
+      .from("hpedu_practice_payments")
       .select("id, name, phone, amount, goods_name, status")
       .eq("moid", moid)
       .maybeSingle();
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     if (!order) return;
     try {
       await supabaseAdmin
-        .from("payments")
+        .from("hpedu_practice_payments")
         .update({
           status,
           result_code: resultCode || null,
@@ -189,7 +189,7 @@ export async function POST(request: Request) {
     source: "korhrdeducation",
   });
   await supabaseAdmin
-    .from("payments")
+    .from("hpedu_practice_payments")
     .update({ lms_synced: lms.ok, lms_synced_at: lms.ok ? paidAt : null, lms_sync_detail: lms.detail ?? null })
     .eq("id", order.id);
 

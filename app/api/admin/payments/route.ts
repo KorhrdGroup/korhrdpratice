@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 /** 관리자 결제 목록 — 최신순. */
 export async function GET() {
   const { data, error } = await supabaseAdmin
-    .from('payments')
+    .from('hpedu_practice_payments')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(500);

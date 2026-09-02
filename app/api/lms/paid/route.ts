@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   }
 
   const { data, error } = await supabaseAdmin
-    .from('payments')
+    .from('hpedu_practice_payments')
     .select('name, phone, amount, goods_name, moid, tid, paid_at')
     .eq('phone', phone)
     .eq('status', 'paid')

@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
   // 결제 전에 주문을 먼저 기록(ready)합니다 — 모바일 결제창은 인증 콜백에
   // 금액을 돌려주지 않을 수 있어, 승인 단계 금액은 이 기록에서 찾습니다.
-  const { error } = await supabaseAdmin.from("payments").insert({
+  const { error } = await supabaseAdmin.from("hpedu_practice_payments").insert({
     name,
     phone,
     amount,
