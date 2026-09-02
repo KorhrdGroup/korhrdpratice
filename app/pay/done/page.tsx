@@ -40,7 +40,7 @@ export default async function Page({
       <div style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 20, boxShadow: '0 6px 24px rgba(15,23,42,0.06)', padding: '48px 28px 32px', textAlign: 'center' }}>
         {ok ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/complete-check.png" alt="" aria-hidden="true" style={{ display: 'block', width: 128, height: 128, objectFit: 'contain', margin: '0 auto 20px' }} />
+          <img src="/complete-check.png" alt="" aria-hidden="true" style={{ display: 'block', width: 84, height: 84, objectFit: 'contain', margin: '0 auto 20px' }} />
         ) : (
           <p style={{ fontSize: 48, margin: '0 0 12px' }}>❌</p>
         )}
